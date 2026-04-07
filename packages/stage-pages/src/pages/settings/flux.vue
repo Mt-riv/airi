@@ -236,6 +236,12 @@ async function handleBuy(amount: number) {
                 >
                   ({{ record.metadata.promptTokens }}+{{ record.metadata.completionTokens }} tokens)
                 </span>
+                <span
+                  v-else-if="record.description?.startsWith('tts:') && record.metadata?.model"
+                  ml-1 text="xs neutral-400"
+                >
+                  ({{ record.metadata.model }})
+                </span>
               </td>
               <td px-4 py-3 text-right font-mono>
                 <span :class="isPositive(record) ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'">
@@ -278,6 +284,12 @@ async function handleBuy(amount: number) {
               ml-1 text="xs neutral-400"
             >
               ({{ record.metadata.promptTokens }}+{{ record.metadata.completionTokens }} tokens)
+            </span>
+            <span
+              v-else-if="record.description?.startsWith('tts:') && record.metadata?.model"
+              ml-1 text="xs neutral-400"
+            >
+              ({{ record.metadata.model }})
             </span>
           </div>
           <div text="xs neutral-400">

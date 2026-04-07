@@ -1753,19 +1753,13 @@ export const useProvidersStore = defineStore('providers', () => {
     }
   }
 
-  // Keep only legacy ASR/TTS providers and official providers as hand-written metadata.
-  // All other categories are sourced from unified definitions in libs/providers.
-  for (const [providerId, existing] of Object.entries(providerMetadata)) {
-    if (existing.category !== 'speech' && existing.category !== 'transcription') {
-      delete providerMetadata[providerId]
-    }
-  }
-
-  // Populate non-speech providers from unified registry translation.
+  // Merge unified registry definitions into providerMetadata.
+  // Unified defineProvider() entries always take precedence over legacy hand-written
+  // metadata. Legacy entries are kept only as fallback for providers not yet migrated
+  // to defineProvider().
+  // TODO: progressively migrate legacy speech/transcription providers to defineProvider()
+  // and remove the hand-written metadata above entirely.
   for (const [providerId, translated] of Object.entries(translatedProviderMetadata)) {
-    if (translated.category === 'speech' || translated.category === 'transcription') {
-      continue
-    }
     providerMetadata[providerId] = translated
   }
 

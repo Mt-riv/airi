@@ -13,8 +13,7 @@ import { useProvidersStore } from '../stores/providers'
  */
 const AUTH_ACTIVATED_PROVIDERS: Array<{ id: string, module: 'consciousness' | 'speech' | 'hearing' }> = [
   { id: 'official-provider', module: 'consciousness' },
-  // { id: 'official-provider-speech', module: 'speech' },
-  // { id: 'official-provider-transcription', module: 'hearing' },
+  { id: 'official-provider-speech', module: 'speech' },
 ]
 
 /**
