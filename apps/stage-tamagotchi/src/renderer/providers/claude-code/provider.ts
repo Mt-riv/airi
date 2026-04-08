@@ -3,6 +3,10 @@ import type { ChatProvider } from '@xsai-ext/providers/utils'
 import type { Message } from '@xsai/shared-chat'
 
 import type {
+  ClaudeCodeCheckBinaryInput,
+  ClaudeCodeCheckBinaryResult,
+  ClaudeCodeResolveSlugInput,
+  ClaudeCodeResolveSlugResult,
   ClaudeCodeSendPromptInput,
   ClaudeCodeSendPromptResult,
   ClaudeCodeStreamEventPayload,
@@ -14,6 +18,8 @@ import { defineInvoke } from '@moeru/eventa'
 import { getElectronEventaContext } from '@proj-airi/electron-vueuse'
 
 import {
+  claudeCodeCheckBinary,
+  claudeCodeResolveSlug,
   claudeCodeSendPrompt,
   claudeCodeStreamEvent,
 } from '../../../shared/eventa'
@@ -38,11 +44,15 @@ export type ClaudeCodeChatProvider = ChatProvider & {
 export interface ClaudeCodeTransport {
   sendPrompt: (payload: ClaudeCodeSendPromptInput) => Promise<ClaudeCodeSendPromptResult>
   onStreamEvent: (listener: (payload: ClaudeCodeStreamEventPayload) => void) => () => void
+  checkBinary: (payload: ClaudeCodeCheckBinaryInput) => Promise<ClaudeCodeCheckBinaryResult>
+  resolveSlug: (payload: ClaudeCodeResolveSlugInput) => Promise<ClaudeCodeResolveSlugResult>
 }
 
 export function createDefaultTransport(): ClaudeCodeTransport {
   const context = getElectronEventaContext()
   const invokeSendPrompt = defineInvoke(context, claudeCodeSendPrompt)
+  const invokeCheckBinary = defineInvoke(context, claudeCodeCheckBinary)
+  const invokeResolveSlug = defineInvoke(context, claudeCodeResolveSlug)
 
   return {
     sendPrompt: payload => invokeSendPrompt(payload),
@@ -56,6 +66,8 @@ export function createDefaultTransport(): ClaudeCodeTransport {
           listener(payload as unknown as ClaudeCodeStreamEventPayload)
       })
     },
+    checkBinary: payload => invokeCheckBinary(payload),
+    resolveSlug: payload => invokeResolveSlug(payload),
   }
 }
 

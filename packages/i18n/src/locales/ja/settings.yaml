@@ -706,6 +706,23 @@ pages:
                 セッションを再開します。空のままにすると、次のメッセージ送信時に
                 新しいセッションが作成されます。
               placeholder: 空のままで新規セッションを作成
+        validators:
+          check-config:
+            title: Claude Code の設定を確認
+        errors:
+          project-dir-required: プロジェクトディレクトリは必須です。
+          project-dir-unreadable: >-
+            プロジェクトディレクトリを解決できません。パスが存在し、Airi から
+            読み取り可能か確認してください。
+          resolve-slug-transport: >-
+            プロジェクトディレクトリの検証に失敗しました。Electron IPC
+            チャネルが利用できない可能性があります。
+          binary-not-found: >-
+            Claude Code バイナリを使用できません。`claude` 実行ファイルが
+            インストールされ、設定したパスからアクセスできるか確認してください。
+          check-binary-transport: >-
+            Claude Code バイナリの検証に失敗しました。Electron IPC
+            チャネルが利用できない可能性があります。
       cloudflare-workers-ai:
         description: cloudflare.com
         fields:

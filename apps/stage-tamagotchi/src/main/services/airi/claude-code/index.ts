@@ -1,3 +1,4 @@
+import type { BinaryProber } from './binary-prober'
 import type {
   EventListener as RunnerEventListener,
   SendPromptInput,
@@ -7,15 +8,20 @@ import type {
 } from './session-runner'
 import type { SessionWatcher } from './session-watcher'
 import type {
+  ClaudeCodeCheckBinaryInput,
+  ClaudeCodeCheckBinaryResult,
+  ClaudeCodeResolveSlugInput,
+  ClaudeCodeResolveSlugResult,
   ClaudeCodeSession,
   ClaudeCodeSessionMeta,
   NormalizedClaudeCodeEvent,
 } from './types'
 
-import { readdir, stat } from 'node:fs/promises'
+import { readdir, realpath, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { projectSlugFor } from './project-slug'
+import { createDefaultBinaryProber } from './binary-prober'
+import { projectSlugFor, projectSlugForRealpath } from './project-slug'
 import { createSessionRunner } from './session-runner'
 import { createSessionWatcher } from './session-watcher'
 
@@ -34,6 +40,13 @@ export interface ClaudeCodeManagerOptions {
    * process). Defaults to the production `createSessionRunner`.
    */
   runnerFactory?: (options: SessionRunnerOptions) => SessionRunner
+  /**
+   * Probes the configured `claude` binary for the settings validator.
+   * Defaults to `createDefaultBinaryProber()` which spawns
+   * `<binaryPath> --version` via `child_process.spawn`. Tests inject a fake
+   * probe to avoid touching the real filesystem.
+   */
+  binaryProber?: BinaryProber
 }
 
 export interface ListSessionsInput {
@@ -62,6 +75,8 @@ export interface ClaudeCodeManager {
   attachSession: (input: AttachSessionInput) => Promise<ClaudeCodeSessionMeta>
   detachSession: (input: DetachSessionInput) => Promise<void>
   sendPrompt: (input: SendManagerPromptInput) => Promise<SendPromptResult>
+  checkBinary: (input: ClaudeCodeCheckBinaryInput) => Promise<ClaudeCodeCheckBinaryResult>
+  resolveSlug: (input: ClaudeCodeResolveSlugInput) => Promise<ClaudeCodeResolveSlugResult>
   onEvent: (listener: ManagerEventListener) => () => void
   stopAll: () => Promise<void>
 }
@@ -80,6 +95,7 @@ interface AttachedSession {
 export function createClaudeCodeManager(options: ClaudeCodeManagerOptions): ClaudeCodeManager {
   const { binaryPath, claudeProjectsRoot } = options
   const runnerFactory = options.runnerFactory ?? createSessionRunner
+  const binaryProber = options.binaryProber ?? createDefaultBinaryProber()
 
   const listeners = new Set<ManagerEventListener>()
   const attached = new Map<string, AttachedSession>()
@@ -255,6 +271,26 @@ export function createClaudeCodeManager(options: ClaudeCodeManagerOptions): Clau
     }
   }
 
+  const checkBinary = async (
+    input: ClaudeCodeCheckBinaryInput,
+  ): Promise<ClaudeCodeCheckBinaryResult> => {
+    return binaryProber(input)
+  }
+
+  const resolveSlug = async (
+    input: ClaudeCodeResolveSlugInput,
+  ): Promise<ClaudeCodeResolveSlugResult> => {
+    try {
+      const realPath = await realpath(input.projectDir)
+      const slug = projectSlugForRealpath(realPath)
+      return { ok: true, realPath, slug }
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { ok: false, error: message }
+    }
+  }
+
   const onEvent = (listener: ManagerEventListener): (() => void) => {
     listeners.add(listener)
     return () => {
@@ -275,6 +311,8 @@ export function createClaudeCodeManager(options: ClaudeCodeManagerOptions): Clau
     attachSession,
     detachSession,
     sendPrompt,
+    checkBinary,
+    resolveSlug,
     onEvent,
     stopAll,
   }

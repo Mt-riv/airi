@@ -752,6 +752,23 @@ pages:
                 new one. Leave empty to create a fresh session on the next
                 message.
               placeholder: Leave empty to start a new session
+        validators:
+          check-config:
+            title: Check Claude Code configuration
+        errors:
+          project-dir-required: Project directory is required.
+          project-dir-unreadable: >-
+            Cannot resolve the project directory. Check the path exists
+            and is readable by Airi.
+          resolve-slug-transport: >-
+            Failed to probe the project directory. The Electron IPC channel
+            may be unavailable.
+          binary-not-found: >-
+            Claude Code binary is not usable. Verify the `claude` executable
+            is installed and accessible from the configured path.
+          check-binary-transport: >-
+            Failed to probe the Claude Code binary. The Electron IPC channel
+            may be unavailable.
       cloudflare-workers-ai:
         description: cloudflare.com
         fields:

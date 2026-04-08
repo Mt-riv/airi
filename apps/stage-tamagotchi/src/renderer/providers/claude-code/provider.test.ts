@@ -38,6 +38,12 @@ function createFakeTransport(options?: {
       listeners.add(listener)
       return () => listeners.delete(listener)
     }),
+    checkBinary: vi.fn(async () => ({ ok: true as const, version: '2.1.96', path: 'claude' })),
+    resolveSlug: vi.fn(async input => ({
+      ok: true as const,
+      realPath: input.projectDir,
+      slug: '-fake-slug',
+    })),
   }
 
   return {

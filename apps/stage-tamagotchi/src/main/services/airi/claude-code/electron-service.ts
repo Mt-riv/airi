@@ -11,8 +11,10 @@ import { errorMessageFrom } from '@moeru/std'
 
 import {
   claudeCodeAttachSession,
+  claudeCodeCheckBinary,
   claudeCodeDetachSession,
   claudeCodeListSessions,
+  claudeCodeResolveSlug,
   claudeCodeSendPrompt,
   claudeCodeStreamEvent,
 } from '../../../../shared/eventa'
@@ -79,6 +81,8 @@ export function createClaudeCodeService(params: CreateClaudeCodeServiceParams): 
     claudeCodeAttachSession,
     claudeCodeDetachSession,
     claudeCodeSendPrompt,
+    claudeCodeCheckBinary,
+    claudeCodeResolveSlug,
   }, {
     claudeCodeListSessions: async (payload) => {
       if (!payload)
@@ -116,6 +120,26 @@ export function createClaudeCodeService(params: CreateClaudeCodeServiceParams): 
           error: errorMessageFrom(error) ?? 'failed to send prompt',
           sessionId: payload.sessionId,
         }
+      }
+    },
+    claudeCodeCheckBinary: async (payload) => {
+      if (!payload)
+        throw new Error('claudeCodeCheckBinary: missing payload')
+      try {
+        return await manager.checkBinary({ binaryPath: payload.binaryPath })
+      }
+      catch (error) {
+        return { ok: false, error: errorMessageFrom(error) ?? 'failed to probe binary' }
+      }
+    },
+    claudeCodeResolveSlug: async (payload) => {
+      if (!payload)
+        throw new Error('claudeCodeResolveSlug: missing payload')
+      try {
+        return await manager.resolveSlug({ projectDir: payload.projectDir })
+      }
+      catch (error) {
+        return { ok: false, error: errorMessageFrom(error) ?? 'failed to resolve slug' }
       }
     },
   })

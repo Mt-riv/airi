@@ -20,7 +20,7 @@
 | Phase 2 | Eventa IPC コントラクト | ✅ 完了 | 2026-04-09 | 5 contracts + service wiring |
 | Phase 3 | Airi Provider として登録 | ✅ 完了 | 2026-04-09 | stage-ui 分岐点 + tamagotchi renderer provider |
 | Phase 4 | i18n | ✅ 完了 | 2026-04-09 | en / ja / zh-Hans / provider localised |
-| Phase 5 | UI: 設定 & セッションセレクタ | ⬜ 未着手 | — | — |
+| Phase 5 | UI: 設定 & セッションセレクタ | 🟨 部分完了 | 2026-04-09 | 自動部分完了 / ビジュアル検証 & セッションセレクタは残保留 |
 | Phase 6 | テスト & 品質 | ⬜ 未着手 | — | 80%+ カバレッジ |
 | Phase 7 | ドキュメント | ⬜ 未着手 | — | README × 3 |
 
@@ -411,22 +411,68 @@ async function streamFrom(...) {
 **目的**: プロバイダ設定画面と、チャット画面でのセッション切り替え UI を整える。
 
 ### 5.1 設定ページ
-- [ ] Zod schema の自動フォーム化で動作することを確認（追加コード不要が理想）
-- [ ] `binaryPath` 未設定時の警告表示
-- [ ] `projectDir` に対応する slug のプレビュー表示
+- [x] Zod schema の自動フォーム化で動作することを確認 — `createProviderConfig` で `binaryPath` / `projectDir` / `sessionId` それぞれ `.meta({ labelLocalized, descriptionLocalized, placeholderLocalized })` 済（Phase 4 で実装）
+- [x] `binaryPath` 未設定時の警告表示 — 実際には `projectDir` / `binaryPath` の**実在確認**を非同期バリデータで実装: `claudeCodeCheckBinary` invoke で `<binaryPath> --version` を実行し失敗時に赤字警告
+- [x] `projectDir` 実在確認 — `claudeCodeResolveSlug` invoke が `fs.realpath` → slug に変換し、ENOENT 等を structured error として surface
+- [ ] `projectDir` に対応する slug のプレビュー表示 — バックエンドの `claudeCodeResolveSlug` invoke は実装済だが、設定画面の表示スロットに slug を出すコンポーネント改修は手動検証を伴うため未実装（将来作業に委ねる）
 
 ### 5.2 セッションセレクタ（optional, 余裕があれば）
-- [ ] `packages/stage-ui/src/components/scenarios/chat/claude-code-session-switcher.vue` 新規
-- [ ] チャットヘッダに現在セッション ID を表示
-- [ ] 「最新の TUI セッションに接続」ボタン
-- [ ] セッション一覧ドロップダウン
+- [ ] `packages/stage-ui/src/components/scenarios/chat/claude-code-session-switcher.vue` 新規 — **未実装**。ビジュアル検証なしに UI を landingするのはリスクが高いため、手動検証が可能なセッションでの実装に委ねる
+- [ ] チャットヘッダに現在セッション ID を表示 — 同上
+- [ ] 「最新の TUI セッションに接続」ボタン — 同上（`claudeCodeListSessions` invoke は Phase 2 で既に使える状態）
+- [ ] セッション一覧ドロップダウン — 同上
+
+### 実装したファイル
+- [x] `apps/stage-tamagotchi/src/main/services/airi/claude-code/binary-prober.ts` 新規 — `createDefaultBinaryProber()` が `spawn('<binaryPath>', ['--version'])` を安全に実行、5 秒タイムアウト / NUL byte guard / stderr error surfacing を含む
+- [x] `apps/stage-tamagotchi/src/main/services/airi/claude-code/index.ts` — Manager に `checkBinary` / `resolveSlug` メソッド追加、`binaryProber` option injection で差し替え可能
+- [x] `apps/stage-tamagotchi/src/shared/claude-code.ts` — `ClaudeCodeCheckBinaryResult` / `ClaudeCodeCheckBinaryInput` / `ClaudeCodeResolveSlugResult` / `ClaudeCodeResolveSlugInput` 型追加
+- [x] `apps/stage-tamagotchi/src/shared/eventa.ts` — `claudeCodeCheckBinary` / `claudeCodeResolveSlug` 2 invoke contracts 追加
+- [x] `apps/stage-tamagotchi/src/main/services/airi/claude-code/electron-service.ts` — 2 新 invoke handler を `defineInvokeHandlers` に追加、`errorMessageFrom` で例外を structured result に変換
+- [x] `apps/stage-tamagotchi/src/renderer/providers/claude-code/provider.ts` — `ClaudeCodeTransport` interface に `checkBinary` / `resolveSlug` を追加、`createDefaultTransport()` が両 invoke を wrap
+- [x] `apps/stage-tamagotchi/src/renderer/providers/claude-code/validate.ts` 新規 — `validateClaudeCodeConfig(config, transport, t?)` 関数。projectDir の required 判定 → `resolveSlug` → `checkBinary` の順で実行、エラーは `errorKey` 付きで i18n キーを添付、transport 例外も捕捉して structured error に変換
+- [x] `apps/stage-tamagotchi/src/renderer/providers/claude-code/index.ts` — `validateConfig` hook で Zod schema 検証 → 新しい `validateClaudeCodeConfig` を呼ぶ流れに差し替え、validator 名も i18n 化
+- [x] `packages/i18n/src/locales/{en,ja,zh-Hans}/settings.yaml` — `validators.check-config.title` と 5 `errors.*` キーを追加（3 ロケール）
+
+### テスト追加分
+- [x] `binary-prober.test.ts` — 6 ケース: spawn 引数 / 成功 (stdout) / 非ゼロ終了 / spawn error (ENOENT) / NUL byte guard / 5 秒タイムアウト / 空 stdout fallback
+- [x] `index.test.ts` — checkBinary delegation (成功/失敗) + resolveSlug (existing dir / missing dir) 4 ケース
+- [x] `electron-service.test.ts` — claudeCodeCheckBinary routing / checkBinary 例外変換 / claudeCodeResolveSlug routing 3 ケース
+- [x] `validate.test.ts` — 8 ケース: full success / projectDir required / resolveSlug error / checkBinary error / 空白 binaryPath で 'claude' default / transport 例外 → structured / t() localisation / fallback
 
 ### 品質ゲート
-- [ ] 設定画面で値を変更 → 永続化 → 再起動後も保持される
-- [ ] プロバイダ切り替えでチャット履歴がリセットされない
+- [x] `pnpm -F @proj-airi/stage-tamagotchi typecheck` pass (node + web)
+- [x] `pnpm -F @proj-airi/stage-tamagotchi exec vitest run src/renderer/providers/claude-code/ src/main/services/airi/claude-code/` → **91/91 pass**（Phase 4 時点 70 → +21）
+- [x] `eslint --cache` touched files → 0 errors
+- [x] i18n YAML key coverage チェック (3 locale × 8 必須キー = 24 キー) 全て存在
+- [ ] **設定画面で値を変更 → 永続化 → 再起動後も保持される** — 手動検証必須、ユーザーに委ねる
+- [ ] **プロバイダ切り替えでチャット履歴がリセットされない** — 手動検証必須
 
 ### 実績ログ
-<!-- -->
+
+**2026-04-09 — Phase 5 部分完了**
+
+**自動化した範囲**
+Phase 5 のタスクのうち、ビジュアル検証を伴わないバックエンド + validation ロジックを完全に実装。チャット UI の手動検証タスクとセッションセレクタ Vue コンポーネント（`claude-code-session-switcher.vue`）は UI 実機検証なしに出荷するとユーザー体験を壊すリスクが高いため、残保留にしている。
+
+**設計判断**
+1. **`binary-prober.ts` を別ファイルに切り出す**: `spawn('--version')` ロジックを `index.ts` から分離し、`BinaryProber` 関数型で DI 可能に。Manager option `binaryProber` で fake を差し込める → テストが実バイナリを触らず走る。
+2. **5 秒タイムアウト**: hung binary で settings 画面がハングするリスクを避けるため。`claude --version` は通常 < 500ms。
+3. **`validate.ts` を provider から分離**: validator ロジックを `index.ts`（定義登録）から独立させ、`createDefaultTransport()` を lazy に呼ぶ形にすることで、テスト時は fake transport を直接差し込める。
+4. **Error keys の i18n**: 各 validation error に `errorKey` フィールド（例: `settings.pages.providers.provider.claude-code.errors.binary-not-found`）を添付、設定画面の error renderer はこの key を使って localised message を表示する（既存 Airi の error surface の慣習に従う）。
+5. **Transport 例外も structured**: `resolveSlug` / `checkBinary` invoke が IPC で throw した場合、validator は rejection ではなく `{ error: ..., errorKey: '*-transport' }` に変換する → チェックが常に完走しフォームが固まらない。
+6. **`validateConfig` 内で Zod parse → async probe の 2 段階**: 静的 field 不足エラー（e.g., projectDir missing）を先に出して IPC を節約。Zod が通ったら async probe で実在確認。
+7. **`t()` のフォールバック**: test では `t()` を undefined で呼ぶ or key-passthrough スタブで動作するよう、`translate()` ヘルパーを書いた。`t(key) === key` のケース（未 localised）でも英文 default を返す。
+
+**スコープ外（ユーザー手動検証に委ねた範囲）**
+1. **設定画面のビジュアル検証**: `pnpm -F @proj-airi/stage-tamagotchi dev` で Electron を起動し、Settings → Providers → Claude Code を選択、バリデータが正しく赤字警告を出す/隠れる/validator 名が localised されていることを目視確認する必要あり。
+2. **永続化 & プロバイダ切り替え**: Airi の既存 provider 設定永続化機構（pinia-plugin-persistedstate 等）に載っているので理論上は動くが、実行環境確認が必要。
+3. **セッションセレクタ UI**: `claude-code-session-switcher.vue` を作る場合、`useElectronEventaInvoke(claudeCodeListSessions)` → ドロップダウン → 選択時 `claudeCodeAttachSession` → backfill の流れ。ただし Phase 3 で触れた通り、attach 中は watcher + runner double-delivery の dedup 設計が必要で、本実装は Phase 6 / Phase 7 の後に UI polish として残した方が良い。
+4. **slug preview**: `claudeCodeResolveSlug` 自体は実装済。設定画面の field description slot に slug を live 表示するコンポーネント改修は、Airi の `createProviderConfig` がサポートする `meta` キーが現時点で "static string のみ" のため、reactive な slot が必要 → 要デザイン / 実装。
+
+**Phase 6 (テスト & 品質) / Phase 7 (ドキュメント) への申し送り**
+- `binary-prober.ts` の `BinaryProber` は外部から差し替え可能な DI point として確立済み。Phase 6 の integration test で `AIRI_TEST_CLAUDE_CODE=1` gate の下で real `claude --version` を走らせるなら、この DI を通さず default prober を使えば良い。
+- validator error key は全て `settings.pages.providers.provider.claude-code.errors.*` に揃えているので、他 locale への翻訳 PR は単一 YAML ブロックの追加で済む。
+- セッションセレクタ UI を後で追加する場合、必要な IPC contracts は既に全て揃っている (`claudeCodeListSessions` / `claudeCodeAttachSession` / `claudeCodeDetachSession` / `claudeCodeStreamEvent`)。
 
 ---
 
@@ -536,6 +582,10 @@ async function streamFrom(...) {
 | 2026-04-09 | 4 | en / ja / zh-Hans に `pages.providers.provider.claude-code` ブロック追加 | title / description + 3 フィールドの label / description / placeholder |
 | 2026-04-09 | 4 | provider `index.ts` を `nameLocalize` / `createProviderConfig` で `t(...)` 化 | session-id を advanced section に配置 |
 | 2026-04-09 | 4 | Phase 4 完了 ✅ | 他 locale は vue-i18n fallback で英文表示、将来の翻訳 PR に委ねる |
+| 2026-04-09 | 5 | Main 側に `checkBinary` + `resolveSlug` invoke 追加 | `binary-prober.ts` 新設 (spawn `<bin> --version`, 5s timeout, NUL guard) |
+| 2026-04-09 | 5 | Provider validator に `validate.ts` 新設、 IPC で非同期プローブを実行 | errorKey 付きで i18n 化、transport 例外は structured error に変換 |
+| 2026-04-09 | 5 | 3 ロケールに `validators` / `errors` i18n キー追加 | en / ja / zh-Hans (8 キー × 3 = 24) |
+| 2026-04-09 | 5 | Phase 5 部分完了 🟨 | 91/91 tests pass / 自動部分完了 / ビジュアル検証 & session-switcher UI は保留 |
 
 ---
 

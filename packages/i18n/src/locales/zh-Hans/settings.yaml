@@ -704,6 +704,20 @@ pages:
                 恢复指定的 Claude Code 会话，而不是创建新会话。留空则在发送
                 下一条消息时创建新会话。
               placeholder: 留空以创建新会话
+        validators:
+          check-config:
+            title: 检查 Claude Code 配置
+        errors:
+          project-dir-required: 项目目录为必填项。
+          project-dir-unreadable: >-
+            无法解析项目目录。请确认路径存在且 Airi 具有读取权限。
+          resolve-slug-transport: >-
+            探测项目目录失败。Electron IPC 通道可能不可用。
+          binary-not-found: >-
+            Claude Code 可执行文件不可用。请确认 `claude` 已安装并可从配置
+            路径访问。
+          check-binary-transport: >-
+            探测 Claude Code 可执行文件失败。Electron IPC 通道可能不可用。
       cloudflare-workers-ai:
         description: Cloudflare.com
         fields:

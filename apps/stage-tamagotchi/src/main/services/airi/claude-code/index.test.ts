@@ -249,4 +249,61 @@ describe('createClaudeCodeManager', () => {
 
     await manager.stopAll()
   })
+
+  it('checkBinary delegates to the injected binaryProber', async () => {
+    const binaryProber = vi.fn(async () => ({ ok: true as const, version: '2.1.96', path: 'claude' }))
+    const manager = createClaudeCodeManager({
+      binaryPath: 'claude',
+      claudeProjectsRoot: projectsRoot,
+      binaryProber,
+    })
+
+    const result = await manager.checkBinary({ binaryPath: '/usr/local/bin/claude' })
+
+    expect(binaryProber).toHaveBeenCalledWith({ binaryPath: '/usr/local/bin/claude' })
+    expect(result).toEqual({ ok: true, version: '2.1.96', path: 'claude' })
+  })
+
+  it('checkBinary surfaces prober failures verbatim', async () => {
+    const binaryProber = vi.fn(async () => ({ ok: false as const, error: 'spawn ENOENT' }))
+    const manager = createClaudeCodeManager({
+      binaryPath: 'claude',
+      claudeProjectsRoot: projectsRoot,
+      binaryProber,
+    })
+
+    const result = await manager.checkBinary({ binaryPath: '/nope/claude' })
+    expect(result).toEqual({ ok: false, error: 'spawn ENOENT' })
+  })
+
+  it('resolveSlug returns { ok: true, realPath, slug } for an existing directory', async () => {
+    const manager = createClaudeCodeManager({
+      binaryPath: 'claude',
+      claudeProjectsRoot: projectsRoot,
+    })
+
+    const result = await manager.resolveSlug({ projectDir })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.realPath).toBeTruthy()
+      // The slug is a lossy hyphen-flattened form of the realpath.
+      expect(result.slug).toMatch(/^-/)
+      expect(result.slug).not.toContain('/')
+      expect(result.slug).not.toContain('_')
+      expect(result.slug).not.toContain('.')
+    }
+  })
+
+  it('resolveSlug returns { ok: false, error } for a missing directory', async () => {
+    const manager = createClaudeCodeManager({
+      binaryPath: 'claude',
+      claudeProjectsRoot: projectsRoot,
+    })
+
+    const result = await manager.resolveSlug({ projectDir: join(projectsRoot, '..', 'does-not-exist') })
+    expect(result.ok).toBe(false)
+    if (!result.ok)
+      expect(result.error).toMatch(/ENOENT|no such/i)
+  })
 })

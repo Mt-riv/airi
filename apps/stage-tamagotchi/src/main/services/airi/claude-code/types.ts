@@ -5,8 +5,12 @@
 
 export type {
   ClaudeCodeAttachSessionInput,
+  ClaudeCodeCheckBinaryInput,
+  ClaudeCodeCheckBinaryResult,
   ClaudeCodeDetachSessionInput,
   ClaudeCodeListSessionsInput,
+  ClaudeCodeResolveSlugInput,
+  ClaudeCodeResolveSlugResult,
   ClaudeCodeSendPromptInput,
   ClaudeCodeSendPromptResult,
   ClaudeCodeSession,

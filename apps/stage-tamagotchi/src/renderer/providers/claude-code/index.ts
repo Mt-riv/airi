@@ -1,7 +1,8 @@
 import { defineProvider } from '@proj-airi/stage-ui/libs/providers/providers/registry'
 
 import { claudeCodeConfigSchema } from './config'
-import { createClaudeCodeProvider } from './provider'
+import { createClaudeCodeProvider, createDefaultTransport } from './provider'
+import { validateClaudeCodeConfig } from './validate'
 
 // Airi provider registration for the Claude Code CLI integration.
 //
@@ -60,27 +61,29 @@ export const providerClaudeCode = defineProvider<typeof claudeCodeConfigSchema._
   validationRequiredWhen: () => true,
   validators: {
     validateConfig: [
-      () => ({
+      ({ t }) => ({
         id: 'claude-code:check-config',
-        name: 'Check Claude Code configuration',
+        name: t(`${I18N_PREFIX}.validators.check-config.title`),
         validator: async (config) => {
-          const errors: Array<{ error: unknown }> = []
-          const result = claudeCodeConfigSchema.safeParse(config)
-
-          if (!result.success) {
-            for (const issue of result.error.issues) {
-              errors.push({ error: new Error(issue.message) })
+          // First enforce the static Zod rules so field-level validation
+          // errors (missing projectDir, empty binaryPath) surface before
+          // we spend IPC round-trips on the async probes.
+          const schemaResult = claudeCodeConfigSchema.safeParse(config)
+          if (!schemaResult.success) {
+            const errors = schemaResult.error.issues.map(issue => ({
+              error: new Error(issue.message),
+            }))
+            return {
+              errors,
+              reason: errors.map(entry => (entry.error as Error).message).join(', '),
+              reasonKey: '',
+              valid: false,
             }
           }
 
-          return {
-            errors,
-            reason: errors.length > 0
-              ? errors.map(entry => (entry.error as Error).message).join(', ')
-              : '',
-            reasonKey: '',
-            valid: errors.length === 0,
-          }
+          // Then run the async probes (binary existence + project dir
+          // resolution) through the default Electron transport.
+          return validateClaudeCodeConfig(schemaResult.data, createDefaultTransport(), t)
         },
       }),
     ],

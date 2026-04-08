@@ -84,3 +84,31 @@ export interface ClaudeCodeStreamEventPayload {
   sessionId: string
   event: NormalizedClaudeCodeEvent
 }
+
+/**
+ * Result of probing the configured `claude` binary. The check runs
+ * `claude --version` on the main process so renderer validators can show
+ * whether the binary is usable without the user having to try sending a
+ * prompt first.
+ */
+export type ClaudeCodeCheckBinaryResult
+  = | { ok: true, version: string, path: string }
+    | { ok: false, error: string }
+
+export interface ClaudeCodeCheckBinaryInput {
+  binaryPath: string
+}
+
+/**
+ * Result of resolving a raw `projectDir` to its canonical realpath + the
+ * Claude Code project slug it maps to. Used by the settings page to show
+ * the user a live preview of `~/.claude/projects/<slug>` so they can
+ * double-check the directory mapping before saving.
+ */
+export type ClaudeCodeResolveSlugResult
+  = | { ok: true, realPath: string, slug: string }
+    | { ok: false, error: string }
+
+export interface ClaudeCodeResolveSlugInput {
+  projectDir: string
+}

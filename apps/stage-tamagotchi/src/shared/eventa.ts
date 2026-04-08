@@ -14,8 +14,12 @@ import type {
 
 import type {
   ClaudeCodeAttachSessionInput,
+  ClaudeCodeCheckBinaryInput,
+  ClaudeCodeCheckBinaryResult,
   ClaudeCodeDetachSessionInput,
   ClaudeCodeListSessionsInput,
+  ClaudeCodeResolveSlugInput,
+  ClaudeCodeResolveSlugResult,
   ClaudeCodeSendPromptInput,
   ClaudeCodeSendPromptResult,
   ClaudeCodeSession,
@@ -311,6 +315,9 @@ export const claudeCodeAttachSession = defineInvokeEventa<ClaudeCodeSessionMeta,
 export const claudeCodeDetachSession = defineInvokeEventa<void, ClaudeCodeDetachSessionInput>('eventa:invoke:electron:claude-code:detach-session')
 export const claudeCodeSendPrompt = defineInvokeEventa<ClaudeCodeSendPromptResult, ClaudeCodeSendPromptInput>('eventa:invoke:electron:claude-code:send-prompt')
 export const claudeCodeStreamEvent = defineEventa<ClaudeCodeStreamEventPayload>('eventa:event:electron:claude-code:stream-event')
+// Phase 5 — configuration probes surfaced by the settings page validators.
+export const claudeCodeCheckBinary = defineInvokeEventa<ClaudeCodeCheckBinaryResult, ClaudeCodeCheckBinaryInput>('eventa:invoke:electron:claude-code:check-binary')
+export const claudeCodeResolveSlug = defineInvokeEventa<ClaudeCodeResolveSlugResult, ClaudeCodeResolveSlugInput>('eventa:invoke:electron:claude-code:resolve-slug')
 
 export { electron } from '@proj-airi/electron-eventa'
 export * from '@proj-airi/electron-eventa/electron-updater'

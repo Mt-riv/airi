@@ -18,8 +18,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   claudeCodeAttachSession,
+  claudeCodeCheckBinary,
   claudeCodeDetachSession,
   claudeCodeListSessions,
+  claudeCodeResolveSlug,
   claudeCodeSendPrompt,
   claudeCodeStreamEvent,
 } from '../../../../shared/eventa'
@@ -71,12 +73,20 @@ function createFakeManager(overrides: Partial<ClaudeCodeManager> = {}): FakeMana
   const defaultSendPrompt = vi.fn<(input: SendManagerPromptInput) => Promise<ClaudeCodeSendPromptResult>>(
     async input => ({ ok: true, sessionId: input.sessionId ?? 'generated' }),
   )
+  const defaultCheckBinary = vi.fn<ClaudeCodeManager['checkBinary']>(async () => ({ ok: true, version: '2.1.96', path: 'claude' }))
+  const defaultResolveSlug = vi.fn<ClaudeCodeManager['resolveSlug']>(async input => ({
+    ok: true,
+    realPath: input.projectDir,
+    slug: `-fake-${input.projectDir.replace(/[/._]+/g, '-')}`,
+  }))
 
   return {
     listSessions: defaultListSessions,
     attachSession: defaultAttach,
     detachSession: defaultDetach,
     sendPrompt: defaultSendPrompt,
+    checkBinary: defaultCheckBinary,
+    resolveSlug: defaultResolveSlug,
     onEvent: (listener) => {
       listeners.add(listener)
       return () => listeners.delete(listener)
@@ -202,6 +212,47 @@ describe('createClaudeCodeService', () => {
       error: 'claude binary missing',
       sessionId: 'abc',
     })
+  })
+
+  it('routes claudeCodeCheckBinary invokes to manager.checkBinary', async () => {
+    const context = await createTestContext()
+    const fake = createFakeManager({
+      checkBinary: vi.fn(async () => ({ ok: true as const, version: '2.1.96', path: '/usr/local/bin/claude' })),
+    })
+    unsubscribe = createClaudeCodeService({ context, manager: fake })
+
+    const invoke = defineInvoke(context, claudeCodeCheckBinary)
+    const result = await invoke({ binaryPath: '/usr/local/bin/claude' })
+
+    expect(fake.checkBinary).toHaveBeenCalledWith({ binaryPath: '/usr/local/bin/claude' })
+    expect(result).toEqual({ ok: true, version: '2.1.96', path: '/usr/local/bin/claude' })
+  })
+
+  it('converts thrown errors from checkBinary into { ok: false } results', async () => {
+    const context = await createTestContext()
+    const fake = createFakeManager({
+      checkBinary: vi.fn(async () => {
+        throw new Error('unexpected probe failure')
+      }),
+    })
+    unsubscribe = createClaudeCodeService({ context, manager: fake })
+
+    const invoke = defineInvoke(context, claudeCodeCheckBinary)
+    const result = await invoke({ binaryPath: 'claude' })
+
+    expect(result).toEqual({ ok: false, error: 'unexpected probe failure' })
+  })
+
+  it('routes claudeCodeResolveSlug invokes to manager.resolveSlug', async () => {
+    const context = await createTestContext()
+    const fake = createFakeManager()
+    unsubscribe = createClaudeCodeService({ context, manager: fake })
+
+    const invoke = defineInvoke(context, claudeCodeResolveSlug)
+    const result = await invoke({ projectDir: '/Users/dev/airi' })
+
+    expect(fake.resolveSlug).toHaveBeenCalledWith({ projectDir: '/Users/dev/airi' })
+    expect(result?.ok).toBe(true)
   })
 
   it('forwards manager events onto the claudeCodeStreamEvent broadcast', async () => {
