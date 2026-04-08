@@ -16,7 +16,7 @@
 | Phase | 概要 | 状態 | 完了日 | 備考 |
 |---|---|---|---|---|
 | Phase 0 | リサーチ検証 & POC | ✅ 完了 | 2026-04-08 | JSONL スキーマ確定 / POC tail 動作 |
-| Phase 1 | Electron main: ClaudeCodeService | ⬜ 未着手 | — | TDD |
+| Phase 1 | Electron main: ClaudeCodeService | ✅ 完了 | 2026-04-09 | TDD / 44 tests / coverage 84% |
 | Phase 2 | Eventa IPC コントラクト | ⬜ 未着手 | — | — |
 | Phase 3 | Airi Provider として登録 | ⬜ 未着手 | — | — |
 | Phase 4 | i18n | ⬜ 未着手 | — | en / ja / zh-Hans |
@@ -140,31 +140,72 @@
 **配置**: `apps/stage-tamagotchi/src/main/services/airi/claude-code/`
 
 ### ファイル構成
-- [ ] `index.ts` — injeca 登録、`start/stop/listSessions/resumeSession/sendPrompt/onEvent` API
-- [ ] `session-watcher.ts` — `chokidar` で JSONL tail、行パース、正規化イベント emit
-- [ ] `session-runner.ts` — `execa` で `claude -p` spawn、stdout 行パース
-- [ ] `jsonl-to-stream-event.ts` — 純関数: Claude Code JSONL → Airi `StreamEvent`
-- [ ] `project-slug.ts` — cwd → `~/.claude/projects/<slug>` 名規則を再現
-- [ ] `types.ts` — `ClaudeCodeEvent`, `ClaudeCodeSession`, `ClaudeCodeSessionMeta`
+- [x] `index.ts` — `createClaudeCodeManager` (listSessions/attachSession/detachSession/sendPrompt/onEvent/stopAll)
+- [x] `session-watcher.ts` — `node:fs.watch` + size-cursor で JSONL tail (chokidar 不要)
+- [x] `session-runner.ts` — `node:child_process.spawn` で `claude -p` spawn、stdout 行パース (execa 不要)
+- [x] `jsonl-to-stream-event.ts` — 純関数: Claude Code JSONL → `NormalizedClaudeCodeEvent`
+- [x] `project-slug.ts` — cwd → `~/.claude/projects/<slug>` 名規則を再現 (`realpath().replace(/[/._]+/g, '-')`)
+- [x] `types.ts` — `NormalizedClaudeCodeEvent`, `ClaudeCodeSession`, `ClaudeCodeSessionMeta`
 
 ### テスト（TDD: 先に赤テストを書く）
-- [ ] `jsonl-to-stream-event.test.ts` — サンプル行 → 期待 StreamEvent 配列
-- [ ] `project-slug.test.ts` — 境界ケース（空白 / 日本語 / シンボリックリンク）
-- [ ] `session-watcher.test.ts` — tmp ディレクトリに書き込み、`vi.fn` で emit 観測
-- [ ] `session-runner.test.ts` — `vi.mock('execa')`、stdout にサンプル JSON 投入
-- [ ] `index.test.ts` — injeca インジェクション確認
+- [x] `jsonl-to-stream-event.test.ts` — サンプル行 → 期待 NormalizedClaudeCodeEvent 配列（14 ケース、user/assistant/system/stream_event/result/meta/unknown を網羅）
+- [x] `project-slug.test.ts` — 境界ケース（スラッシュ/アンダースコア/ドット、連続区切り、NUL バイト、実 symlink）10 ケース
+- [x] `session-watcher.test.ts` — tmp ディレクトリに write → append、部分書き込み、stop 後無視、parse エラー、ファイル不在 6 ケース
+- [x] `session-runner.test.ts` — `vi.mock('node:child_process')` + FakeChild、`--resume` 引数・session_id 取得・非ゼロ終了・stop 6 ケース
+- [x] `index.test.ts` — listSessions/attachSession/detachSession/idempotent attach/sendPrompt with runnerFactory の 6 ケース
 
 ### 依存追加（Phase 0 の調査結果次第）
-- [ ] `execa` (必要なら)
-- [ ] `chokidar` (必要なら)
+- [x] `execa` — **不採用**、`node:child_process.spawn` で代替（配列引数 + `shell: false` で R6 対策済）
+- [x] `chokidar` — **不採用**、`node:fs.watch` + size-cursor で代替（POC 検証済、部分書き込み test もパス）
 
 ### 品質ゲート
-- [ ] `pnpm -F @proj-airi/stage-tamagotchi typecheck` pass
-- [ ] `pnpm -F @proj-airi/stage-tamagotchi exec vitest run` 新規テスト全 pass
-- [ ] カバレッジ 80%+
+- [x] `pnpm -F @proj-airi/stage-tamagotchi typecheck` pass（node + web 両方）
+- [x] `pnpm -F @proj-airi/stage-tamagotchi exec vitest run src/main/services/airi/claude-code/` 新規テスト全 pass (44/44)
+- [x] カバレッジ 84.1% (project-slug 100% / index 89.32% / jsonl-to-stream-event 81.73% / session-runner 81.6% / session-watcher 81.57%)
+- [x] `eslint --cache` 0 errors
 
 ### 実績ログ
-<!-- -->
+
+**2026-04-09 — Phase 1 完了**
+
+**実装した公開 API**
+```ts
+createClaudeCodeManager({
+  binaryPath: string,
+  claudeProjectsRoot: string,     // ~/.claude/projects を渡す（テストではオーバーライド可）
+  runnerFactory?: ...,            // テスト用フック
+}): {
+  listSessions({ projectDir }): Promise<ClaudeCodeSession[]>
+  attachSession({ sessionId, projectDir }): Promise<ClaudeCodeSessionMeta>
+  detachSession({ sessionId }): Promise<void>
+  sendPrompt({ projectDir, sessionId, text }): Promise<SendPromptResult>
+  onEvent(listener): () => void
+  stopAll(): Promise<void>
+}
+```
+
+**技術的な設計判断**
+1. **execa / chokidar を採用しない**。`node:child_process.spawn` + `node:fs.watch` + サイズ差分 cursor で十分かつ依存を増やさない。POC で検証済の partial-write ハンドリングを production 実装にも転写。
+2. **Manager は Electron / Eventa に依存しない pure domain logic**。Phase 2 で thin Eventa wrapper を被せる。単体試験が vi.mock('electron') 無しで走る。
+3. **`runnerFactory` を option で注入**。試験で `createSessionRunner` を差し替えられる。`createClaudeCodeManager` 本体は実 `claude` を触らずに通る。
+4. **Buffer events until sessionId is resolved**。新規セッション送信時、`system.init` 行か `SendPromptResult.sessionId` で正しい ID が判明するまで events をバッファし、判明後に一括 flush。これで `onEvent` リスナが常に正確な `sessionId` で呼ばれる。
+5. **NUL バイト injection guard** を `projectSlugForRealpath` と `session-runner.sendPrompt` の両方に仕込む (R6 対策)。
+6. **Unknown event 退避** (R3): 未知 `type` は `{ kind: 'unknown', raw }` に wrap して落とさない。
+
+**Phase 2 への申し送り**
+- `types.ts` の `NormalizedClaudeCodeEvent` / `ClaudeCodeSessionMeta` / `ClaudeCodeSession` を `apps/stage-tamagotchi/src/shared/eventa.ts` から import 可能にする（shared types は `../shared` へ抜き出しても良い、または `claude-code/types.ts` を直接 shared 配下に置く）。
+- Eventa contracts は PLAN.md Phase 2 に定義済の通り:
+  - `claudeCodeListSessions: defineInvokeEventa<ClaudeCodeSession[], { projectDir: string }>`
+  - `claudeCodeAttachSession: defineInvokeEventa<ClaudeCodeSessionMeta, { sessionId, projectDir }>`
+  - `claudeCodeDetachSession: defineInvokeEventa<void, { sessionId }>`
+  - `claudeCodeSendPrompt: defineInvokeEventa<SendPromptResult, { projectDir, sessionId, text }>`
+  - `claudeCodeStreamEvent: defineEventa<{ sessionId: string, event: NormalizedClaudeCodeEvent }>` ← broadcast
+- `main/index.ts` への組み込み: `injeca.provide('modules:claude-code-manager', { build: () => createClaudeCodeManager({ binaryPath: <config>, claudeProjectsRoot: join(homedir(), '.claude', 'projects') }) })` を `mcpStdioManager` の後ろあたりに追加。
+- 既存 `mcpStdioManager` のように `onAppBeforeQuit(() => manager.stopAll())` でクリーンアップ登録する。
+
+**カバレッジの穴（将来の改善余地）**
+- `session-runner.ts` 163-164 行: child spawn error イベント（`child.once('error', ...)`）のテストケース未記述。Phase 6 の統合テストで実バイナリ不在時に自然にカバーされる見込み。
+- `session-watcher.ts` 117-119, 126, 132 行: stopped 判定・rerun-after-drain の競合ケース。高負荷 race condition は現状の単体試験ではカバーしていない。
 
 ---
 
@@ -385,6 +426,9 @@ settings:
 | 2026-04-08 | 0 | `docs/integrations/claude-code-jsonl-schema.md` 作成 | transcript/stream 両 dialect + StreamEvent マッピング + セキュリティ注意点 |
 | 2026-04-08 | 0 | `scripts/poc/claude-code-tail.mjs` 作成 & 動作確認 | 実セッションファイルを tail して全 event 型を整形出力。依存ゼロ |
 | 2026-04-08 | 0 | Phase 0 完了 ✅ | R2 解決、execa/chokidar 未導入を Phase 1 で対応 |
+| 2026-04-09 | 1 | TDD で `project-slug` / `jsonl-to-stream-event` / `session-watcher` / `session-runner` / `index` 実装 | 44 tests pass / coverage 84% / typecheck pass / eslint 0 errors |
+| 2026-04-09 | 1 | execa/chokidar は採用せず `node:child_process.spawn` + `node:fs.watch` で代替 | 依存追加ゼロ。POC の cursor パターンを production 実装に転写 |
+| 2026-04-09 | 1 | Phase 1 完了 ✅ | Manager API 完成、Phase 2 (Eventa IPC) に申し送り |
 
 ---
 
