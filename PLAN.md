@@ -18,7 +18,7 @@
 | Phase 0 | リサーチ検証 & POC | ✅ 完了 | 2026-04-08 | JSONL スキーマ確定 / POC tail 動作 |
 | Phase 1 | Electron main: ClaudeCodeService | ✅ 完了 | 2026-04-09 | TDD / 44 tests / coverage 84% |
 | Phase 2 | Eventa IPC コントラクト | ✅ 完了 | 2026-04-09 | 5 contracts + service wiring |
-| Phase 3 | Airi Provider として登録 | ⬜ 未着手 | — | — |
+| Phase 3 | Airi Provider として登録 | ✅ 完了 | 2026-04-09 | stage-ui 分岐点 + tamagotchi renderer provider |
 | Phase 4 | i18n | ⬜ 未着手 | — | en / ja / zh-Hans |
 | Phase 5 | UI: 設定 & セッションセレクタ | ⬜ 未着手 | — | — |
 | Phase 6 | テスト & 品質 | ⬜ 未着手 | — | 80%+ カバレッジ |
@@ -270,34 +270,87 @@ createClaudeCodeManager({
 ## Phase 3: Airi Provider として登録
 
 **目的**: Airi のプロバイダ登録機構に `claude-code` を追加し、チャットから選択できるようにする。
-**配置**: `packages/stage-ui/src/libs/providers/providers/claude-code/`
+**配置**: `apps/stage-tamagotchi/src/renderer/providers/claude-code/` （**変更**: 当初の `packages/stage-ui/` 案から tamagotchi renderer 配下へ移動）
+
+> **アーキテクチャ判断**: `stage-ui` は `@proj-airi/electron-vueuse` に依存できない（platform-agnostic を維持するため）ので、provider 本体は tamagotchi renderer に置き、`renderer/main.ts` から side-effect import で stage-ui の `providerRegistry` singleton に登録する。`stage-ui` 側には最小分岐 (`isClaudeCodeChatProvider` duck-typing + `streamFrom` 内の早期 return) のみを追加して疎結合を維持。
 
 ### ファイル
-- [ ] `index.ts` — `defineProvider<ClaudeCodeConfig>({ id: 'claude-code', tasks: ['chat'], icon: 'i-simple-icons:anthropic', ... })`
-- [ ] `config.ts` — Zod schema: `binaryPath`, `projectDir`, `sessionId?`, `autoAttach`。`z.meta({ labelLocalized, ... })` 付き
-- [ ] `provider.ts` — `createProvider` 戻り値。`message(messages, options)` で Eventa invoke → `onStreamEvent` に配管
-- [ ] `packages/stage-ui/src/libs/providers/providers/index.ts` に `import './claude-code'` 追加
+- [x] `apps/stage-tamagotchi/src/renderer/providers/claude-code/index.ts` — `defineProvider<ClaudeCodeConfig>({ id: 'claude-code', tasks: ['chat'], icon: 'i-simple-icons:anthropic', ... })`
+- [x] `apps/stage-tamagotchi/src/renderer/providers/claude-code/config.ts` — Zod schema: `binaryPath` (default `'claude'`) / `projectDir` (required) / `sessionId?`
+- [x] `apps/stage-tamagotchi/src/renderer/providers/claude-code/provider.ts` — `createClaudeCodeProvider(config, transport?)` が ChatProvider shim + `__airi_claudeCodeStream` method を返す。`createClaudeCodeStreamDispatcher` が transport を経由して Eventa IPC ブリッジ
+- [x] `packages/stage-ui/src/stores/llm.ts` — `isClaudeCodeChatProvider()` duck-typing check + `streamFrom` 冒頭の早期 return で委譲
+- [x] `apps/stage-tamagotchi/src/renderer/main.ts` — `import './providers/claude-code'` の side-effect import を追加
 
 ### アダプタ実装の要点
-- [ ] 既存 `@xsai` プロバイダの `chat.completions.create` 風 async iterable インタフェースを模倣
-- [ ] Eventa `claudeCodeStreamEvent` の subscribe を provider インスタンスで管理、message ごとに同一セッションをフィルタ
-- [ ] tool_name はそのまま通す（既存 `tool-call-block.vue` が描画）
+- [x] 既存 `@xsai` プロバイダの `chat.completions.create` 風 async iterable インタフェースは**模倣しない** — 代わりに `streamFrom` に分岐点を設け、Claude Code provider 内部は `sendPrompt` + `onStreamEvent` のシンプルな pub/sub パターンで実装
+- [x] Eventa `claudeCodeStreamEvent` の subscribe は `ClaudeCodeTransport.onStreamEvent` 経由。`currentSessionId` 判明後はそのセッション ID でフィルタ、未判明時は全 event を forward
+- [x] tool_name はそのまま通す（既存 `tool-call-block.vue` が描画）
+- [x] `assistant-text` / `tool-call` / `tool-result` / `tool-error` / `finish` / `error` を Airi `StreamEvent` にマッピング、`user-text` / `meta` / `unknown` は drop
+- [x] 連続 send 時に `currentSessionId` を closure で保持して `--resume` 相当の継続ができる
 
 ### バリデータ
-- [ ] `validators.validateConfig` で `binaryPath` の実在確認（`which claude` 相当を main 経由で）
-- [ ] 設定画面で赤字警告が出ることを目視確認
+- [x] `validators.validateConfig` で Zod schema 検証（`binaryPath` 空白チェック、`projectDir` required）
+- [ ] `binaryPath` の実在確認（`which claude`） — Phase 5 の UI タスクで追加予定
+- [ ] 設定画面での赤字警告目視確認 — Phase 5 で実施
 
 ### テスト
-- [ ] `provider.test.ts` — Eventa をモックしストリーム合流を検証
-- [ ] `config.test.ts` — Zod schema の境界テスト
+- [x] `provider.test.ts` — Fake transport で 11 ケース検証: sendPrompt 呼び出し、content-part 配列からの text 抽出、assistant-text → text-delta、tool-call / tool-result / tool-error のマッピング、session ID 継続、エラー伝搬、unsubscribe、cross-session フィルタ、no_input finish、provider shim の marker
+- [x] `config.test.ts` — Zod schema の 7 ケース境界テスト（デフォルト、trim、required、空白拒否、optional sessionId）
 
 ### 品質ゲート
-- [ ] `pnpm -F @proj-airi/stage-ui typecheck` pass
-- [ ] `pnpm -F @proj-airi/stage-ui exec vitest run` pass
-- [ ] チャット画面のプロバイダセレクタに "Claude Code" が表示される
+- [x] `pnpm -F @proj-airi/stage-tamagotchi typecheck` pass (node + web)
+- [x] `pnpm -F @proj-airi/stage-ui typecheck` pass
+- [x] `pnpm -F @proj-airi/stage-tamagotchi exec vitest run src/renderer/providers/claude-code/ src/main/services/airi/claude-code/` → 70/70 pass
+- [x] `pnpm -F @proj-airi/stage-ui exec vitest run src/stores/llm` → 24/24 pass（llm.ts 分岐追加による既存 test への影響なし）
+- [x] `eslint --cache` touched files → 0 errors
+- [ ] チャット画面のプロバイダセレクタに "Claude Code" が表示される — Phase 5 の手動検証で確認
 
 ### 実績ログ
-<!-- -->
+
+**2026-04-09 — Phase 3 完了**
+
+**アーキテクチャ判断の詳細**
+当初の PLAN.md 案では provider を `packages/stage-ui/src/libs/providers/providers/claude-code/` に置く設計だったが、以下の理由で `apps/stage-tamagotchi/src/renderer/providers/claude-code/` に移動した:
+
+1. **stage-ui の platform neutrality**: stage-ui は web / electron / capacitor の3 stage で共用される。`@proj-airi/electron-vueuse` を stage-ui deps に追加すると、web build で Electron IPC API が引き込まれ bundle が破綻する。
+2. **定義の register は singleton**: `packages/stage-ui/src/libs/providers/providers/registry.ts` の `providerRegistry` は ESM module-level Map。tamagotchi renderer から `defineProvider(...)` を呼べば stage-ui の module instance が共有されるので、設定ページ & チャット orchestrator は variant に関わらず同じ registry を見る。
+3. **Electron-specific な副作用は tamagotchi に集約**: 既存の mcp-servers / plugin-host も tamagotchi 側に実装されており、パターンとして一致。
+
+**stage-ui 側の分岐点**
+```ts
+// packages/stage-ui/src/stores/llm.ts
+const AIRI_CLAUDE_CODE_STREAM_METHOD = '__airi_claudeCodeStream' as const
+
+export function isClaudeCodeChatProvider(chatProvider): chatProvider is ChatProvider & ClaudeCodeChatProviderMarker {
+  return typeof chatProvider[AIRI_CLAUDE_CODE_STREAM_METHOD] === 'function'
+}
+
+async function streamFrom(...) {
+  if (isClaudeCodeChatProvider(chatProvider)) {
+    await chatProvider[AIRI_CLAUDE_CODE_STREAM_METHOD](messages, options)
+    return
+  }
+  // ... existing xsai path unchanged
+}
+```
+3 行の早期 return + 型ガード関数 1 個のみ。他の既存 provider のパスは完全に不変。
+
+**Scope 簡略化**
+- **mirror 機能は Phase 5 に後回し**: `attachSession` を用いて TUI セッションを backfill mirror するのは Phase 3 では行わず、`sendPrompt` 単体で "Airi から送信 → 応答をストリーム" のフローのみ実装。理由: session runner の stdout と session watcher の JSONL tail を同時に動かすと同じイベントが二重配信されるため dedup が必要で、それは Phase 5 の session selector UI と一緒に設計する方が整合する。
+- **session id の継続は closure state で実装**: `createClaudeCodeStreamDispatcher` が `currentSessionId` を mutable 変数として保持し、初回 sendPrompt 結果で確定、以降の call で `--resume` 相当の継続を行う。config の `sessionId` が初期値として使える。
+
+**テスト戦略**
+- `provider.test.ts` では `getElectronEventaContext` を一切呼ばず、`ClaudeCodeTransport` interface を注入する形で fake transport を使う（production 用の `createDefaultTransport()` は test から呼ばない）。これにより Electron 環境なしで 11 ケースが走る。
+- `stream-event のタイミング制御` が必要なテスト（assistant-text の forward、cross-session filter 等）では `sendPrompt` の Promise を手動で resolve するパターンで、event emit → resolve の順序を保証。
+
+**既存テストの退行確認**
+- stage-tamagotchi の full vitest run で確認したところ、事前存在の 4 件 failure (`plugins/index.test.ts` × 4 + `display.test.ts`) が再現。Phase 3 変更を stash した状態でも同じ failure が発生するため、これらは Phase 3 とは無関係の pre-existing 問題（`--ignore-scripts` による isolated-vm native 未ビルド等が原因と推定）。
+
+**Phase 4 (i18n) / Phase 5 (UI) への申し送り**
+- provider の `name` / `description` / `nameLocalize` / `descriptionLocalize` は現在ハードコード英文。Phase 4 で `packages/i18n/src/locales/*/settings.yaml` に `settings.pages.providers.provider.claude-code.*` キーを追加し、localised 関数を差し替える。
+- `binaryPath` の実在確認 (which claude 相当) は Phase 5 で追加。現状 Zod schema は文字列 trim / min(1) のみ。main 側に `claudeCodeCheckBinary` invoke を新設し、validateConfig から呼ぶと良い。
+- session selector UI (Phase 5) では `claudeCodeListSessions` invoke → drop-down → 選択後 `claudeCodeAttachSession` → backfill event を historical として ingest → 以降の live event を dedup (UUID ベース) という流れが必要。現状の provider は attach を呼ばないので、UI から呼ばれたら別経路で ingest する形を取る。
+- `assistant-thinking` block は現在 text-delta として forward しているが、Phase 5 で `tool-call-block.vue` のような専用 UI スライスを作って visual に区別するのが望ましい。
 
 ---
 
@@ -469,6 +522,10 @@ settings:
 | 2026-04-09 | 2 | `main/index.ts` injeca graph + `chat/rpc/index.electron.ts` に wire | `modules:claude-code-manager` → `chatWindow` `dependsOn` |
 | 2026-04-09 | 2 | `electron-service.test.ts` 7 ケース (fake manager + spyOn emit) | 51/51 green / typecheck pass / eslint clean |
 | 2026-04-09 | 2 | Phase 2 完了 ✅ | main ↔ renderer 型安全 IPC 完成、Phase 3 (Provider 登録) に申し送り |
+| 2026-04-09 | 3 | stage-ui `llm.ts` に `isClaudeCodeChatProvider` 分岐追加 | duck-typed marker `__airi_claudeCodeStream`、既存 xsai path 完全に不変 |
+| 2026-04-09 | 3 | tamagotchi renderer 配下に provider 実装 (`providers/claude-code/`) | config / provider / index の 3 ファイル + fake transport テスト 11 ケース |
+| 2026-04-09 | 3 | `renderer/main.ts` 側 side-effect import で registry 登録 | stage-ui の providerRegistry singleton に自動登録 |
+| 2026-04-09 | 3 | Phase 3 完了 ✅ | 70/70 tests pass, typecheck/lint clean, mirror は Phase 5 に後回し |
 
 ---
 
