@@ -13,21 +13,40 @@ import { createClaudeCodeProvider } from './provider'
 //   `apps/stage-tamagotchi/src/renderer/main.ts` so that the stage-ui
 //   `providerRegistry` singleton picks it up alongside the built-in
 //   providers.
-// - The localised strings are left as direct fallbacks here; Phase 4
-//   introduces proper `packages/i18n` keys.
+// - i18n keys live at
+//   `settings.pages.providers.provider.claude-code.*` in
+//   `packages/i18n/src/locales/{en,ja,zh-Hans}/settings.yaml`. The
+//   `name` / `description` strings here are English fallbacks that are
+//   only surfaced when the locale file is missing a translation.
+const I18N_PREFIX = 'settings.pages.providers.provider.claude-code'
+
 export const providerClaudeCode = defineProvider<typeof claudeCodeConfigSchema._input>({
   id: 'claude-code',
   order: 5,
   name: 'Claude Code',
-  nameLocalize: () => 'Claude Code',
+  nameLocalize: ({ t }) => t(`${I18N_PREFIX}.title`),
   description: 'Bridge Airi chat with Anthropic\'s Claude Code CLI.',
-  descriptionLocalize: () => 'Bridge Airi chat with Anthropic\'s Claude Code CLI.',
+  descriptionLocalize: ({ t }) => t(`${I18N_PREFIX}.description`),
   tasks: ['chat'],
   icon: 'i-simple-icons:anthropic',
 
-  createProviderConfig: () => claudeCodeConfigSchema.meta({
-    title: 'Claude Code',
-    description: 'Mirror and drive an Anthropic Claude Code CLI session from Airi chat.',
+  createProviderConfig: ({ t }) => claudeCodeConfigSchema.extend({
+    binaryPath: claudeCodeConfigSchema.shape.binaryPath.meta({
+      labelLocalized: t(`${I18N_PREFIX}.fields.field.binary-path.label`),
+      descriptionLocalized: t(`${I18N_PREFIX}.fields.field.binary-path.description`),
+      placeholderLocalized: t(`${I18N_PREFIX}.fields.field.binary-path.placeholder`),
+    }),
+    projectDir: claudeCodeConfigSchema.shape.projectDir.meta({
+      labelLocalized: t(`${I18N_PREFIX}.fields.field.project-dir.label`),
+      descriptionLocalized: t(`${I18N_PREFIX}.fields.field.project-dir.description`),
+      placeholderLocalized: t(`${I18N_PREFIX}.fields.field.project-dir.placeholder`),
+    }),
+    sessionId: claudeCodeConfigSchema.shape.sessionId.meta({
+      labelLocalized: t(`${I18N_PREFIX}.fields.field.session-id.label`),
+      descriptionLocalized: t(`${I18N_PREFIX}.fields.field.session-id.description`),
+      placeholderLocalized: t(`${I18N_PREFIX}.fields.field.session-id.placeholder`),
+      section: 'advanced',
+    }),
   }),
 
   createProvider(config) {

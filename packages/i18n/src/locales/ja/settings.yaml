@@ -681,6 +681,31 @@ pages:
             part5: >-
               このプロバイダーを使用する必要がある場合は、 Serverless Function で実行される専用のプロキシバックエンド、
             part6: またはCORS制限をバイパスするためのCORSバイパスサービスが必要です。
+      claude-code:
+        title: Claude Code
+        description: Airi のチャットを Anthropic の Claude Code CLI と接続します。
+        fields:
+          field:
+            binary-path:
+              label: Claude Code バイナリ
+              description: >-
+                `claude` 実行ファイルへのパス。`claude` のままにすると、シェルの
+                PATH から解決されたものを使用します。
+              placeholder: /usr/local/bin/claude
+            project-dir:
+              label: プロジェクトディレクトリ
+              description: >-
+                Claude Code に渡す作業ディレクトリ。
+                ~/.claude/projects/<slug> にマップされ、Airi が対応する
+                セッション履歴をミラーできるようになります。
+              placeholder: /Users/you/your-project
+            session-id:
+              label: セッション ID（任意）
+              description: >-
+                新しいセッションを作成するのではなく、指定した Claude Code
+                セッションを再開します。空のままにすると、次のメッセージ送信時に
+                新しいセッションが作成されます。
+              placeholder: 空のままで新規セッションを作成
       cloudflare-workers-ai:
         description: cloudflare.com
         fields:

@@ -681,6 +681,29 @@ pages:
             part5: >-
               如果您确实需要使用此提供程序，则需要一个专用的代理后端，例如在
             part6: 上运行的Serverless Function，或者一些绕过 CORS 的服务，以绕过 CORS 限制。
+      claude-code:
+        title: Claude Code
+        description: 将 Airi 聊天与 Anthropic 的 Claude Code CLI 连接起来。
+        fields:
+          field:
+            binary-path:
+              label: Claude Code 可执行文件
+              description: >-
+                `claude` 可执行文件的路径。保持 `claude` 将使用 shell PATH
+                解析得到的版本。
+              placeholder: /usr/local/bin/claude
+            project-dir:
+              label: 项目目录
+              description: >-
+                传递给 Claude Code 的工作目录。会映射到
+                ~/.claude/projects/<slug>，以便 Airi 可以镜像对应的会话记录。
+              placeholder: /Users/you/your-project
+            session-id:
+              label: 会话 ID（可选）
+              description: >-
+                恢复指定的 Claude Code 会话，而不是创建新会话。留空则在发送
+                下一条消息时创建新会话。
+              placeholder: 留空以创建新会话
       cloudflare-workers-ai:
         description: Cloudflare.com
         fields:

@@ -727,6 +727,31 @@ pages:
               If you do need to use this provider, you will need a dedicated
               proxy backend like a Serverless Function running on
             part6: or some CORS bypassing services to bypass the CORS restrictions.
+      claude-code:
+        title: Claude Code
+        description: Bridge Airi chat with Anthropic's Claude Code CLI.
+        fields:
+          field:
+            binary-path:
+              label: Claude Code binary
+              description: >-
+                Path to the `claude` executable. Leave as `claude` to use the
+                version resolved from your shell PATH.
+              placeholder: /usr/local/bin/claude
+            project-dir:
+              label: Project directory
+              description: >-
+                Working directory passed to Claude Code. Maps to
+                ~/.claude/projects/<slug> so Airi can mirror the right
+                session transcripts.
+              placeholder: /Users/you/your-project
+            session-id:
+              label: Session ID (optional)
+              description: >-
+                Resume a specific Claude Code session instead of starting a
+                new one. Leave empty to create a fresh session on the next
+                message.
+              placeholder: Leave empty to start a new session
       cloudflare-workers-ai:
         description: cloudflare.com
         fields:

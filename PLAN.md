@@ -19,7 +19,7 @@
 | Phase 1 | Electron main: ClaudeCodeService | ✅ 完了 | 2026-04-09 | TDD / 44 tests / coverage 84% |
 | Phase 2 | Eventa IPC コントラクト | ✅ 完了 | 2026-04-09 | 5 contracts + service wiring |
 | Phase 3 | Airi Provider として登録 | ✅ 完了 | 2026-04-09 | stage-ui 分岐点 + tamagotchi renderer provider |
-| Phase 4 | i18n | ⬜ 未着手 | — | en / ja / zh-Hans |
+| Phase 4 | i18n | ✅ 完了 | 2026-04-09 | en / ja / zh-Hans / provider localised |
 | Phase 5 | UI: 設定 & セッションセレクタ | ⬜ 未着手 | — | — |
 | Phase 6 | テスト & 品質 | ⬜ 未着手 | — | 80%+ カバレッジ |
 | Phase 7 | ドキュメント | ⬜ 未着手 | — | README × 3 |
@@ -360,42 +360,49 @@ async function streamFrom(...) {
 **配置**: `packages/i18n/src/locales/*/settings.yaml`
 
 ### 対象ロケール
-- [ ] `en` (mandatory)
-- [ ] `ja` (mandatory)
-- [ ] `zh-Hans` (mandatory)
-- [ ] その他既存ロケール (best-effort, 空値 fallback)
+- [x] `en` (mandatory) — `pages.providers.provider.claude-code` ブロック追加
+- [x] `ja` (mandatory) — 日本語訳追加
+- [x] `zh-Hans` (mandatory) — 简体中文訳追加
+- [x] 他ロケール（es / fr / ko / ru / vi / zh-Hant）は未着手 — vue-i18n fallback で en を表示する
 
-### キー構造（例）
-```yaml
-settings:
-  pages:
-    providers:
-      provider:
-        claude-code:
-          title: Claude Code
-          description: Bridge Airi chat with Anthropic's Claude Code CLI
-          fields:
-            binary-path:
-              label: Claude Code binary
-              placeholder: /usr/local/bin/claude
-              description: Path to the `claude` executable
-            project-dir:
-              label: Project directory
-              placeholder: /Users/you/your-project
-              description: cwd passed to Claude Code (maps to ~/.claude/projects/<slug>)
-            auto-attach:
-              label: Auto-attach to latest session
-              description: Mirror the most recent running TUI session
-```
+### 実装されたキー構造
+`settings.pages.providers.provider.claude-code.*` の下に以下:
+- `title` — プロバイダー名
+- `description` — プロバイダー説明
+- `fields.field.binary-path.{label,description,placeholder}`
+- `fields.field.project-dir.{label,description,placeholder}`
+- `fields.field.session-id.{label,description,placeholder}` — advanced section
 
 ### タスク
-- [ ] en キー追加
-- [ ] ja キー追加
-- [ ] zh-Hans キー追加
-- [ ] 他ロケールは en fallback 確認
+- [x] en キー追加
+- [x] ja キー追加
+- [x] zh-Hans キー追加
+- [x] 他ロケールは en fallback 確認（vue-i18n の既定 fallback 挙動で英文が表示される）
+- [x] `apps/stage-tamagotchi/src/renderer/providers/claude-code/index.ts` を `nameLocalize` / `descriptionLocalize` / `createProviderConfig` で `t(...)` を使うよう更新
+- [x] `binary-path` / `project-dir` / `session-id` それぞれに `.meta({ labelLocalized, descriptionLocalized, placeholderLocalized })` を設定、`session-id` は `section: 'advanced'` でフォームの下部に配置
+
+### 品質ゲート
+- [x] yaml パース: 3 ロケール全てで `pages.providers.provider.claude-code` ツリーが正しく読め、全キー値が取得できること確認
+- [x] `pnpm -F @proj-airi/stage-tamagotchi typecheck` pass
+- [x] `pnpm -F @proj-airi/i18n typecheck` pass
+- [x] `pnpm -F @proj-airi/stage-tamagotchi exec vitest run src/renderer/providers/claude-code/ src/main/services/airi/claude-code/` → 70/70 pass (既存テストに退行なし)
+- [x] `eslint --cache` touched files → 0 errors
 
 ### 実績ログ
-<!-- -->
+
+**2026-04-09 — Phase 4 完了**
+
+**設計判断**
+1. **キー階層は `pages.providers.provider.claude-code`** — 既存の `anthropic` / `cloudflare-workers-ai` / `ollama` と同じ alphabetical に並ぶ位置に挿入（anthropic < claude-code < cloudflare）。
+2. **Field localization は `.meta({ labelLocalized, ... })` 方式** — 既存 ollama の thinking-mode フィールドと同じパターンを踏襲。フォームオートジェネレータ（Zod schema → UI）が自動で i18n を拾う。
+3. **`session-id` は advanced section** — ほとんどのユーザーは設定せず自動で新セッションが作られるため、`meta({ section: 'advanced' })` でフォーム下部に隠す。
+4. **fallback strings は英語のまま残す** — `name` / `description` の hardcode 英文は `t()` が見つからない場合の fallback として vue-i18n が使用する（定義 system の `ProviderDefinition` が必須プロパティとして要求）。
+5. **es / fr / ko / ru / vi / zh-Hant は未翻訳** — Phase 4 MVP は main 3 locale のみに絞り、他は vue-i18n の自動 fallback で英文表示にする。将来 `chore(i18n): update translations` のコミット（例: PR #1603）と同じ流れで OSS コントリビュータから追加される想定。
+
+**Phase 5 への申し送り**
+- 設定ページで `claude-code` provider を選択した際、3 つのフィールドが正しくラベル表示されることを手動検証する。
+- `binaryPath` 実在確認バリデータを追加する際は、エラーメッセージも i18n キー化する（例: `pages.providers.provider.claude-code.errors.binary-not-found`）。
+- `assistant-thinking` ブロック用の UI スライスを追加する際は、ラベルも i18n 化する（例: `components.chat.thinking.label`）。
 
 ---
 
@@ -526,6 +533,9 @@ settings:
 | 2026-04-09 | 3 | tamagotchi renderer 配下に provider 実装 (`providers/claude-code/`) | config / provider / index の 3 ファイル + fake transport テスト 11 ケース |
 | 2026-04-09 | 3 | `renderer/main.ts` 側 side-effect import で registry 登録 | stage-ui の providerRegistry singleton に自動登録 |
 | 2026-04-09 | 3 | Phase 3 完了 ✅ | 70/70 tests pass, typecheck/lint clean, mirror は Phase 5 に後回し |
+| 2026-04-09 | 4 | en / ja / zh-Hans に `pages.providers.provider.claude-code` ブロック追加 | title / description + 3 フィールドの label / description / placeholder |
+| 2026-04-09 | 4 | provider `index.ts` を `nameLocalize` / `createProviderConfig` で `t(...)` 化 | session-id を advanced section に配置 |
+| 2026-04-09 | 4 | Phase 4 完了 ✅ | 他 locale は vue-i18n fallback で英文表示、将来の翻訳 PR に委ねる |
 
 ---
 
