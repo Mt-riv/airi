@@ -12,6 +12,17 @@ import type {
   VrmUpdateFrameTracePayload,
 } from '@proj-airi/stage-ui-three/trace'
 
+import type {
+  ClaudeCodeAttachSessionInput,
+  ClaudeCodeDetachSessionInput,
+  ClaudeCodeListSessionsInput,
+  ClaudeCodeSendPromptInput,
+  ClaudeCodeSendPromptResult,
+  ClaudeCodeSession,
+  ClaudeCodeSessionMeta,
+  ClaudeCodeStreamEventPayload,
+} from './claude-code'
+
 import { defineEventa, defineInvokeEventa } from '@moeru/eventa'
 
 export const electronStartTrackMousePosition = defineInvokeEventa('eventa:invoke:electron:start-tracking-mouse-position')
@@ -289,6 +300,17 @@ export const electronAuthLogout = defineInvokeEventa<void>('eventa:invoke:electr
 
 export const i18nSetLocale = defineInvokeEventa<void, Locale>('eventa:invoke:electron:i18n:set-locale')
 export const i18nGetLocale = defineInvokeEventa<Locale>('eventa:invoke:electron:i18n:get-locale')
+
+// Claude Code CLI integration — see Phase 2 of the Claude Code × Airi plan
+// in PLAN.md and the manager implementation under
+// `src/main/services/airi/claude-code/`. Payload types live in
+// `src/shared/claude-code.ts` so the renderer can import them without
+// pulling in any main-only code.
+export const claudeCodeListSessions = defineInvokeEventa<ClaudeCodeSession[], ClaudeCodeListSessionsInput>('eventa:invoke:electron:claude-code:list-sessions')
+export const claudeCodeAttachSession = defineInvokeEventa<ClaudeCodeSessionMeta, ClaudeCodeAttachSessionInput>('eventa:invoke:electron:claude-code:attach-session')
+export const claudeCodeDetachSession = defineInvokeEventa<void, ClaudeCodeDetachSessionInput>('eventa:invoke:electron:claude-code:detach-session')
+export const claudeCodeSendPrompt = defineInvokeEventa<ClaudeCodeSendPromptResult, ClaudeCodeSendPromptInput>('eventa:invoke:electron:claude-code:send-prompt')
+export const claudeCodeStreamEvent = defineEventa<ClaudeCodeStreamEventPayload>('eventa:event:electron:claude-code:stream-event')
 
 export { electron } from '@proj-airi/electron-eventa'
 export * from '@proj-airi/electron-eventa/electron-updater'

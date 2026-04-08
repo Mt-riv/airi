@@ -2,6 +2,7 @@ import type { BrowserWindow } from 'electron'
 
 import type { I18n } from '../../../libs/i18n'
 import type { ServerChannel } from '../../../services/airi/channel-server'
+import type { ClaudeCodeManager } from '../../../services/airi/claude-code'
 import type { McpStdioManager } from '../../../services/airi/mcp-servers'
 import type { WidgetsWindowManager } from '../../widgets'
 
@@ -10,6 +11,7 @@ import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { ipcMain } from 'electron'
 
 import { electronOpenMainDevtools } from '../../../../shared/eventa'
+import { createClaudeCodeService } from '../../../services/airi/claude-code/electron-service'
 import { createMcpServersService } from '../../../services/airi/mcp-servers'
 import { createWidgetsService } from '../../../services/airi/widgets'
 import { setupBaseWindowElectronInvokes } from '../../shared/window'
@@ -19,6 +21,7 @@ export async function setupChatWindowElectronInvokes(params: {
   widgetsManager: WidgetsWindowManager
   serverChannel: ServerChannel
   mcpStdioManager: McpStdioManager
+  claudeCodeManager: ClaudeCodeManager
   i18n: I18n
 }) {
   // TODO: once we refactored eventa to support window-namespaced contexts,
@@ -32,6 +35,7 @@ export async function setupChatWindowElectronInvokes(params: {
 
   createWidgetsService({ context, widgetsManager: params.widgetsManager, window: params.window })
   createMcpServersService({ context, manager: params.mcpStdioManager })
+  createClaudeCodeService({ context, manager: params.claudeCodeManager })
 
   defineInvokeHandler(context, electronOpenMainDevtools, () => params.window.webContents.openDevTools({ mode: 'detach' }))
 }

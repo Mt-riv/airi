@@ -17,7 +17,7 @@
 |---|---|---|---|---|
 | Phase 0 | リサーチ検証 & POC | ✅ 完了 | 2026-04-08 | JSONL スキーマ確定 / POC tail 動作 |
 | Phase 1 | Electron main: ClaudeCodeService | ✅ 完了 | 2026-04-09 | TDD / 44 tests / coverage 84% |
-| Phase 2 | Eventa IPC コントラクト | ⬜ 未着手 | — | — |
+| Phase 2 | Eventa IPC コントラクト | ✅ 完了 | 2026-04-09 | 5 contracts + service wiring |
 | Phase 3 | Airi Provider として登録 | ⬜ 未着手 | — | — |
 | Phase 4 | i18n | ⬜ 未着手 | — | en / ja / zh-Hans |
 | Phase 5 | UI: 設定 & セッションセレクタ | ⬜ 未着手 | — | — |
@@ -214,22 +214,56 @@ createClaudeCodeManager({
 **目的**: main ↔ renderer の型安全な通信チャネルを定義。
 
 ### ファイル
-- [ ] `apps/stage-tamagotchi/src/shared/eventa.ts` に以下を追加:
-  - [ ] `claudeCodeListSessions: defineInvokeEventa<ClaudeCodeSession[]>`
-  - [ ] `claudeCodeStartResume: defineInvokeEventa<{ sessionId: string }, { sessionId?: string; cwd: string }>`
-  - [ ] `claudeCodeSendPrompt: defineInvokeEventa<{ ok: true } | { ok: false; error: string }, { sessionId: string; text: string }>`
-  - [ ] `claudeCodeStopSession: defineInvokeEventa<void, { sessionId: string }>`
-  - [ ] `claudeCodeStreamEvent: defineEventa<{ sessionId: string; event: NormalizedStreamEvent }>`
-  - [ ] `claudeCodeSessionChanged: defineEventa<{ sessionId: string; meta: ClaudeCodeSessionMeta }>`
-- [ ] `apps/stage-tamagotchi/src/main/windows/chat/rpc/claude-code.electron.ts` 新規作成（ハンドラ束ね）
-- [ ] `apps/stage-tamagotchi/src/main/windows/chat/rpc/index.electron.ts` から呼び出し追加
+- [x] `apps/stage-tamagotchi/src/shared/claude-code.ts` 新規 — 共有型 (`NormalizedClaudeCodeEvent` / `ClaudeCodeSession` / `ClaudeCodeSessionMeta` / `ClaudeCodeSendPromptResult` / I/O input 型)
+- [x] `apps/stage-tamagotchi/src/main/services/airi/claude-code/types.ts` — shared からの re-export に置換（Phase 1 の internal import パスを維持）
+- [x] `apps/stage-tamagotchi/src/shared/eventa.ts` に以下を追加:
+  - [x] `claudeCodeListSessions: defineInvokeEventa<ClaudeCodeSession[], { projectDir }>`
+  - [x] `claudeCodeAttachSession: defineInvokeEventa<ClaudeCodeSessionMeta, { sessionId, projectDir }>`
+  - [x] `claudeCodeDetachSession: defineInvokeEventa<void, { sessionId }>`
+  - [x] `claudeCodeSendPrompt: defineInvokeEventa<ClaudeCodeSendPromptResult, { projectDir, sessionId, text }>`
+  - [x] `claudeCodeStreamEvent: defineEventa<{ sessionId, event: NormalizedClaudeCodeEvent }>` — main→renderer broadcast
+- [x] `apps/stage-tamagotchi/src/main/services/airi/claude-code/electron-service.ts` 新規:
+  - [x] `setupClaudeCodeManager()` — injeca builder、`onAppBeforeQuit` でクリーンアップ登録、デフォルトで `~/.claude/projects` を使用
+  - [x] `createClaudeCodeService({ context, manager })` — 4 invoke handler 登録 + `manager.onEvent` → `context.emit(claudeCodeStreamEvent, ...)` の bridge
+- [x] `apps/stage-tamagotchi/src/main/index.ts` — `modules:claude-code-manager` を injeca graph に追加、`chatWindow` が `dependsOn` に追加
+- [x] `apps/stage-tamagotchi/src/main/windows/chat/index.ts` — `claudeCodeManager` param を受け取り `setupChatWindowElectronInvokes` に渡す
+- [x] `apps/stage-tamagotchi/src/main/windows/chat/rpc/index.electron.ts` — `createClaudeCodeService` を呼び出してハンドラ登録
+
+> **命名調整**: PLAN 初稿の `claudeCodeStartResume` / `claudeCodeStopSession` / `claudeCodeSessionChanged` は、Phase 1 の Manager API と揃えて `claudeCodeAttachSession` / `claudeCodeDetachSession` に統一。`SessionChanged` 専用イベントは現時点で attach 直後の meta 応答で代用可能なため実装しない。
+
+### テスト
+- [x] `electron-service.test.ts` — fake `ClaudeCodeManager` を注入して全 handler の routing、send prompt の try/catch、broadcast forwarding、unsubscribe の 7 ケース
 
 ### 品質ゲート
-- [ ] 型が renderer 側からも import できる
-- [ ] typecheck pass
+- [x] 型が shared 層 (`src/shared/claude-code.ts`) から renderer / main 両方で import 可能
+- [x] `pnpm -F @proj-airi/stage-tamagotchi typecheck` pass (node + web)
+- [x] `pnpm -F @proj-airi/stage-tamagotchi exec vitest run src/main/services/airi/claude-code/` 51/51 pass
+- [x] `eslint --cache` 0 errors (touched files)
 
 ### 実績ログ
-<!-- -->
+
+**2026-04-09 — Phase 2 完了**
+
+**設計判断**
+1. **Shared types を `src/shared/claude-code.ts` に集約**。main の `types.ts` は re-export 専用に変更し、Phase 1 の internal import パスを温存。renderer 側も `src/shared/claude-code.ts` から直接型を取れるので main-only モジュールを引き込まずに済む。
+2. **Electron / Eventa wiring は `electron-service.ts` に分離**、`index.ts`（Manager）は pure domain のまま維持。`createClaudeCodeManager` は引き続き Electron 非依存で単体試験できる。
+3. **Send prompt の例外は `{ ok: false, error }` に変換**。`errorMessageFrom(@moeru/std)` で extract し、Eventa の reject ではなく構造化結果として renderer に返す。Phase 1 の `SendPromptResult` シェイプと完全互換。
+4. **Broadcast 設計**: `manager.onEvent((sid, event) => context.emit(claudeCodeStreamEvent, { sid, event }))` で main→renderer の一方向 push。`createClaudeCodeService` はアンサブスクライブ関数を返し、テストが clean up できるように。
+5. **命名を Manager API と一致**: `attachSession` / `detachSession` で統一（PLAN 初稿の `startResume` / `stopSession` を改名、PLAN.md も更新済）。
+6. **Injeca の配置**: `mcpStdioManager` の直後。`chatWindow` の `dependsOn` に追加したため、chat ウィンドウ生成時に manager が確実に供給される。
+7. **Lifecycle**: `setupClaudeCodeManager` 内で `onAppBeforeQuit(() => manager.stopAll())` を登録。mcp-servers / plugins と同じパターン。
+
+**テスト戦略の変更点**
+- 最初は `context.on(claudeCodeStreamEvent, ...)` で broadcast を受信する試験を書いたが、pure `@moeru/eventa` context では subscribe/emit の in-memory loopback が期待通り動かないため、`vi.spyOn(context, 'emit')` で emit 呼び出しを直接検証する方式に変更。Electron adapter 配下でのみ `.on` は実効する前提。
+
+**Phase 3 への申し送り**
+- Renderer 側で `claudeCode*` invoke / event を直接扱わず、`packages/stage-ui/src/libs/providers/providers/claude-code/` の Provider 実装に閉じ込める。
+- Provider では以下を import する（全て `apps/stage-tamagotchi/src/shared/eventa.ts` から re-export もできるが、stage-ui は apps/tamagotchi に直接依存できないので、provider 側で eventa id 文字列を重複定義するか、`@proj-airi/stage-shared` 経由で共有する必要あり）:
+  - `claudeCodeListSessions` / `claudeCodeAttachSession` / `claudeCodeDetachSession` / `claudeCodeSendPrompt` (invoke)
+  - `claudeCodeStreamEvent` (subscribe)
+- 型は `src/shared/claude-code.ts` を参照したいが、同上の依存方向制約により、Phase 3 の検討事項として「shared types を `packages/stage-shared` に昇格するか、eventa 文字列 + 重複型定義で済ませるか」を判断する必要がある。
+- Renderer 側の Eventa 接続は `@proj-airi/electron-vueuse` の `useElectronEventaInvoke` / `getElectronEventaContext` を使う既存パターンを踏襲。
+- `binaryPath` の validator は Phase 3 で追加。現時点では `setupClaudeCodeManager` が `'claude'` を素通ししているので、実在しないバイナリで `sendPrompt` を叩くと `child.once('error')` → `{ ok: false }` に落ちるだけで UX としては不親切。
 
 ---
 
@@ -429,6 +463,12 @@ settings:
 | 2026-04-09 | 1 | TDD で `project-slug` / `jsonl-to-stream-event` / `session-watcher` / `session-runner` / `index` 実装 | 44 tests pass / coverage 84% / typecheck pass / eslint 0 errors |
 | 2026-04-09 | 1 | execa/chokidar は採用せず `node:child_process.spawn` + `node:fs.watch` で代替 | 依存追加ゼロ。POC の cursor パターンを production 実装に転写 |
 | 2026-04-09 | 1 | Phase 1 完了 ✅ | Manager API 完成、Phase 2 (Eventa IPC) に申し送り |
+| 2026-04-09 | 2 | shared types を `src/shared/claude-code.ts` へ抽出、main の `types.ts` を re-export に | renderer 側も main-only 依存なしで型を import 可能 |
+| 2026-04-09 | 2 | 5 Eventa contracts を `src/shared/eventa.ts` に追加 | list/attach/detach/sendPrompt/streamEvent |
+| 2026-04-09 | 2 | `electron-service.ts` 作成 (`setupClaudeCodeManager` + `createClaudeCodeService`) | pure manager と Electron wiring を分離 |
+| 2026-04-09 | 2 | `main/index.ts` injeca graph + `chat/rpc/index.electron.ts` に wire | `modules:claude-code-manager` → `chatWindow` `dependsOn` |
+| 2026-04-09 | 2 | `electron-service.test.ts` 7 ケース (fake manager + spyOn emit) | 51/51 green / typecheck pass / eslint clean |
+| 2026-04-09 | 2 | Phase 2 完了 ✅ | main ↔ renderer 型安全 IPC 完成、Phase 3 (Provider 登録) に申し送り |
 
 ---
 

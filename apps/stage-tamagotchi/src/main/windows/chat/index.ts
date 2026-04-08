@@ -1,5 +1,6 @@
 import type { I18n } from '../../libs/i18n'
 import type { ServerChannel } from '../../services/airi/channel-server'
+import type { ClaudeCodeManager } from '../../services/airi/claude-code'
 import type { McpStdioManager } from '../../services/airi/mcp-servers'
 import type { WidgetsWindowManager } from '../widgets'
 
@@ -17,6 +18,7 @@ export function setupChatWindowReusableFunc(params: {
   widgetsManager: WidgetsWindowManager
   serverChannel: ServerChannel
   mcpStdioManager: McpStdioManager
+  claudeCodeManager: ClaudeCodeManager
   i18n: I18n
 }) {
   return createReusableWindow(async () => {
@@ -45,6 +47,7 @@ export function setupChatWindowReusableFunc(params: {
       widgetsManager: params.widgetsManager,
       serverChannel: params.serverChannel,
       mcpStdioManager: params.mcpStdioManager,
+      claudeCodeManager: params.claudeCodeManager,
       i18n: params.i18n,
     })
 
