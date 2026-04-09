@@ -1,6 +1,7 @@
 import type { I18n } from '../../libs/i18n'
 import type { WindowAuthManager } from '../../services/airi/auth'
 import type { ServerChannel } from '../../services/airi/channel-server'
+import type { ClaudeCodeManager } from '../../services/airi/claude-code'
 import type { McpStdioManager } from '../../services/airi/mcp-servers'
 import type { AutoUpdater } from '../../services/electron/auto-updater'
 import type { DevtoolsWindowManager } from '../devtools'
@@ -31,6 +32,7 @@ export function setupSettingsWindowReusableFunc(params: {
   onWindowCreated?: (window: BrowserWindow) => void
   serverChannel: ServerChannel
   mcpStdioManager: McpStdioManager
+  claudeCodeManager: ClaudeCodeManager
   i18n: I18n
   windowAuthManager: WindowAuthManager
 }): SettingsWindowManager {
@@ -70,6 +72,7 @@ export function setupSettingsWindowReusableFunc(params: {
       devtoolsMarkdownStressWindow: params.devtoolsMarkdownStressWindow,
       serverChannel: params.serverChannel,
       mcpStdioManager: params.mcpStdioManager,
+      claudeCodeManager: params.claudeCodeManager,
       i18n: params.i18n,
       windowAuthManager: params.windowAuthManager,
     })

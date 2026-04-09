@@ -30,6 +30,11 @@ export const providerClaudeCode = defineProvider<typeof claudeCodeConfigSchema._
   descriptionLocalize: ({ t }) => t(`${I18N_PREFIX}.description`),
   tasks: ['chat'],
   icon: 'i-simple-icons:anthropic',
+  // The `claude` CLI handles its own auth via Anthropic's login flow —
+  // Airi never needs an API key / bearer token. Opting out of the
+  // credentials-required path lets the legacy providers store treat
+  // the provider as "configured" once the projectDir validator passes.
+  requiresCredentials: false,
 
   createProviderConfig: ({ t }) => claudeCodeConfigSchema.extend({
     binaryPath: claudeCodeConfigSchema.shape.binaryPath.meta({
@@ -65,25 +70,17 @@ export const providerClaudeCode = defineProvider<typeof claudeCodeConfigSchema._
         id: 'claude-code:check-config',
         name: t(`${I18N_PREFIX}.validators.check-config.title`),
         validator: async (config) => {
-          // First enforce the static Zod rules so field-level validation
-          // errors (missing projectDir, empty binaryPath) surface before
-          // we spend IPC round-trips on the async probes.
-          const schemaResult = claudeCodeConfigSchema.safeParse(config)
-          if (!schemaResult.success) {
-            const errors = schemaResult.error.issues.map(issue => ({
-              error: new Error(issue.message),
-            }))
-            return {
-              errors,
-              reason: errors.map(entry => (entry.error as Error).message).join(', '),
-              reasonKey: '',
-              valid: false,
-            }
-          }
-
-          // Then run the async probes (binary existence + project dir
-          // resolution) through the default Electron transport.
-          return validateClaudeCodeConfig(schemaResult.data, createDefaultTransport(), t)
+          // Delegate straight to validateClaudeCodeConfig — it handles
+          // missing / blank fields with localised `errorKey`s
+          // (`…errors.project-dir-required` etc.) so we avoid the raw
+          // Zod error text leaking into the UI. The async probes
+          // (`claudeCodeResolveSlug` + `claudeCodeCheckBinary`) also
+          // come from the default Electron transport.
+          return validateClaudeCodeConfig(
+            (config ?? {}) as Record<string, unknown>,
+            createDefaultTransport(),
+            t,
+          )
         },
       }),
     ],
