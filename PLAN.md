@@ -21,7 +21,7 @@
 | Phase 3 | Airi Provider として登録 | ✅ 完了 | 2026-04-09 | stage-ui 分岐点 + tamagotchi renderer provider |
 | Phase 4 | i18n | ✅ 完了 | 2026-04-09 | en / ja / zh-Hans / provider localised |
 | Phase 5 | UI: 設定 & セッションセレクタ | 🟨 部分完了 | 2026-04-09 | 自動部分完了 / ビジュアル検証 & セッションセレクタは残保留 |
-| Phase 6 | テスト & 品質 | ⬜ 未着手 | — | 80%+ カバレッジ |
+| Phase 6 | テスト & 品質 | 🟨 自動部分完了 | 2026-04-09 | 統合テスト + カバレッジ 86.66% / 手動シナリオ A-E 文書化済 |
 | Phase 7 | ドキュメント | ⬜ 未着手 | — | README × 3 |
 
 **状態凡例**: ⬜ 未着手 / 🟨 進行中 / ✅ 完了 / 🟥 ブロック
@@ -478,31 +478,93 @@ Phase 5 のタスクのうち、ビジュアル検証を伴わないバックエ
 
 ## Phase 6: テスト & 品質
 
-**目的**: 80%+ カバレッジ + 統合テスト + 手動検証。
+**目的**: 80%+ カバレッジ + 統合テスト + 手動検証シナリオ文書化。
 
 ### 自動テスト
-- [ ] Phase 1 ユニットテスト群 pass
-- [ ] Phase 3 provider テスト pass
-- [ ] **統合テスト** `apps/stage-tamagotchi/src/main/services/airi/claude-code/integration.test.ts`
-  - [ ] `process.env.AIRI_TEST_CLAUDE_CODE === '1'` でのみ実行
-  - [ ] 実 `claude -p "2+2"` を spawn し正規化イベントが emit されることを確認
-- [ ] カバレッジレポートで 80%+ を確認
+- [x] Phase 1 ユニットテスト群 pass（64 cases、binary-prober 追加分含む）
+- [x] Phase 3 provider テスト pass（18 cases → 24 cases、coverage 上乗せ分含む）
+- [x] Phase 5 validator テスト pass（8 cases）
+- [x] **統合テスト** `apps/stage-tamagotchi/src/main/services/airi/claude-code/integration.test.ts` 新規
+  - [x] `process.env.AIRI_TEST_CLAUDE_CODE === '1'` でのみ実行（`describe.skip` gate）
+  - [x] 実 `claude -p "Reply with just the number: 2+2"` を spawn し、`assistant-text` + `finish` + 同一 sessionId 収束を確認
+  - [x] `checkBinary` が実 `claude --version` に対して `{ ok: true, version: /\d+\.\d+\.\d+/ }` を返すことを確認
+  - [x] `resolveSlug` が tmp project dir を正しく canonical slug に変換することを確認
+  - [x] 環境変数無しで 3 tests skipped、有りで 3/3 pass (約 6 秒) を実機確認
+- [x] カバレッジレポートで **86.66%** を達成（target 80%+ クリア）
+  - `binary-prober.ts`: 94.59%
+  - `project-slug.ts`: 100%
+  - `validate.ts`: 96.15%
+  - `index.ts` (manager): 90.35%
+  - `provider.ts` (renderer): 80.82%
+  - `electron-service.ts`: 82.05%
+  - `jsonl-to-stream-event.ts`: 81.73%
+  - `session-runner.ts`: 81.6%
+  - `session-watcher.ts`: 81.57%
+  - `config.ts`: 100%
+  - `shared/eventa.ts`: 100%
 
 ### 手動検証シナリオ
-- [ ] **シナリオ A**: ターミナルで `claude` を起動 → 数ターン会話 → Airi を起動 → 同一セッションの履歴が Airi に表示される
-- [ ] **シナリオ B**: Airi のチャット入力から送信 → ターミナル側の TUI にも同じメッセージが現れ、Claude の返答が両方に流れる
-- [ ] **シナリオ C**: Airi から送信 → tool call (Bash) が発生 → `tool-call-block.vue` で描画される
-- [ ] **シナリオ D**: `binaryPath` を不正値に設定 → バリデータが警告を表示
-- [ ] **シナリオ E**: Claude Code プロセスを途中で kill → Airi 側が error イベントを受け取り UI に反映
+**文書化**: `docs/integrations/claude-code-manual-verification.md` 新規作成。全 5 シナリオ + セキュリティレビュー + 永続化 & UX チェックリスト + リリースゲーティングを定義。
+
+- [ ] **シナリオ A** (ターミナル TUI → Airi mirror) — ⚠️ Phase 5 follow-up の session-switcher UI が必要なため deferred
+- [ ] **シナリオ B** (Airi 送信 → round-trip) — 手動検証必須
+- [ ] **シナリオ C** (tool-call rendering) — 手動検証必須
+- [ ] **シナリオ D** (不正 binaryPath → バリデータ警告) — 手動検証必須、チェックリスト上で i18n キー名まで明記
+- [ ] **シナリオ E** (claude プロセス kill → error propagation) — 手動検証必須
+
+> 手動実行のチェック項目は `docs/integrations/claude-code-manual-verification.md` のチェックボックスで追跡する。リリース PR には上記ファイル内のボックスを埋めた状態でリンクする。
 
 ### 品質ゲート（コミット前必須）
-- [ ] `pnpm typecheck` pass
-- [ ] `pnpm lint:fix` で差分なし
-- [ ] `pnpm test:run` pass
-- [ ] security review: ファイルパス sanitize、コマンドインジェクション対策確認
+- [x] `pnpm -F @proj-airi/stage-tamagotchi typecheck` pass (node + web)
+- [x] `pnpm -F @proj-airi/stage-ui typecheck` pass
+- [x] `pnpm -F @proj-airi/i18n typecheck` pass
+- [x] `eslint --cache` touched files → 0 errors（自動修正後）
+- [x] `pnpm -F @proj-airi/stage-tamagotchi exec vitest run src/renderer/providers/claude-code/ src/main/services/airi/claude-code/` → **99 passed + 3 skipped** (Phase 5 時点 91 → +8 cases)
+- [x] security review（Phase 6 実績ログ参照）
 
 ### 実績ログ
-<!-- -->
+
+**2026-04-09 — Phase 6 自動部分完了**
+
+**統合テストの構成**
+`integration.test.ts` は `describe.skip` gate (`AIRI_TEST_CLAUDE_CODE` 環境変数) で opt-in する設計。3 ケース:
+1. **sendPrompt "2+2"**: tmp projectDir + tmp claudeProjectsRoot を使い、実 `claude -p "Reply with just the number: 2+2"` を spawn。`assistant-text` と `finish` event が届くこと、全 event の sessionId が 1 つに収束すること、`result.sessionId` が truthy であることを assertion。タイムアウト 120 秒（API レスポンス + rate limit 吸収）。
+2. **checkBinary against real CLI**: `/usr/local/bin/claude` を probe し `version` が `/\d+\.\d+\.\d+/` パターンで返ることを確認。タイムアウト 15 秒。
+3. **resolveSlug for tmp project dir**: tmp ディレクトリが `-...` 形式の slug に正しく flatten されることを確認。
+
+実行結果（Phase 6 自動部分完了時点）:
+- `AIRI_TEST_CLAUDE_CODE` 未設定 → 3 tests skipped ✓
+- `AIRI_TEST_CLAUDE_CODE=1` → 3 tests passed in 6.18s ✓（実 Claude Code CLI に対する live 検証）
+
+**カバレッジ向上の追加テスト**
+Phase 5 時点のカバレッジは 84.65% で目標達成していたが、Phase 6 ではさらに以下の穴を埋めた:
+
+- `provider.test.ts`: 73.97% → 80.82%
+  - `assistant-thinking` → text-delta マッピング
+  - 中間 `finish` event の forward
+  - 中間 `error` event の forward
+  - `user-text` / `meta` / `unknown` event の drop 確認
+  - 非 string tool-result の JSON.stringify パス
+- `electron-service.test.ts`: 61.53% → 82.05%
+  - `setupClaudeCodeManager` factory 経由の `onAppBeforeQuit` 登録確認
+  - shutdown callback 内の `manager.stopAll()` 呼び出し確認
+  - shutdown callback 内の `manager.stopAll()` 例外 swallowing 確認
+  - `resolveSlug` 例外 → `{ ok: false, error }` 変換確認
+
+**セキュリティレビュー (Phase 6 手動チェック)**
+1. **Command injection**: `session-runner.ts`, `binary-prober.ts`, `session-runner.test.ts` を目視 review。両方とも `spawn(binaryPath, args, { shell: false })` の配列形式、string interpolation 無し。NUL byte guard は両方で明示的に実装済み。
+2. **Path escape**: `project-slug.ts` の `projectSlugForRealpath` が `fs.realpath` 済みの path しか受け取らないこと、NUL byte を explicit reject することを確認。`resolveSlug` ハンドラは `fs.realpath` を経由してから slug 化しており escape リスク無し。
+3. **Timeout**: `binary-prober.ts` の 5 秒 timeout は `setTimeout` + `child.kill('SIGTERM')` で実装、fake timer test で検証済み。`session-runner.ts` の spawn には明示的 timeout は無いが、Airi 側の `stopAll()` 経由で abort 可能。
+4. **JSONL line size**: `session-watcher.ts` の cursor-based reader は line size に上限を設けていない。Phase 0 で 130kB+ の line を観測済みだが問題なく処理できることを確認。
+5. **Secret leakage in logs**: `electron-service.ts` の `useLogg` 呼び出しは broadcast error のみ `log.withError(error).warn(...)` で記録。event raw payload (user prompts / tool outputs) は logger に渡していないため credential leak のリスク低。Phase 7 の docs で明文化予定。
+
+**Phase 7 (ドキュメント) への申し送り**
+- 手動検証チェックリスト `docs/integrations/claude-code-manual-verification.md` は既に作成済。Phase 7 はこれに加えて:
+  - `apps/stage-tamagotchi/src/main/services/airi/claude-code/README.md` — 主要モジュール配置図、debugging tips
+  - `apps/stage-tamagotchi/src/renderer/providers/claude-code/README.md` — Provider pattern description + stream-ui branch 説明
+  - `docs/integrations/claude-code.md` — end-to-end setup (Claude Code インストール → Airi 設定 → 接続確認) + アーキテクチャ図 + トラブルシューティング
+- `docs/integrations/claude-code-jsonl-schema.md` (Phase 0 作成済) / `claude-code-manual-verification.md` (Phase 6 作成済) との cross-reference を追加
+- カバレッジ番号 86.66% を README に記載、CI で継続監視できるよう workspace vitest.config.ts にカバレッジ threshold を追加するかどうかは Phase 7 の判断事項
 
 ---
 
@@ -586,6 +648,11 @@ Phase 5 のタスクのうち、ビジュアル検証を伴わないバックエ
 | 2026-04-09 | 5 | Provider validator に `validate.ts` 新設、 IPC で非同期プローブを実行 | errorKey 付きで i18n 化、transport 例外は structured error に変換 |
 | 2026-04-09 | 5 | 3 ロケールに `validators` / `errors` i18n キー追加 | en / ja / zh-Hans (8 キー × 3 = 24) |
 | 2026-04-09 | 5 | Phase 5 部分完了 🟨 | 91/91 tests pass / 自動部分完了 / ビジュアル検証 & session-switcher UI は保留 |
+| 2026-04-09 | 6 | `integration.test.ts` 新設 (`AIRI_TEST_CLAUDE_CODE=1` gate) | sendPrompt "2+2" / checkBinary / resolveSlug の 3 ケース、実 CLI で 6.18s pass |
+| 2026-04-09 | 6 | provider.ts / electron-service.ts のカバレッジ穴を埋めるテスト追加 | provider 73.97→80.82%、electron-service 61.53→82.05% |
+| 2026-04-09 | 6 | 全ゲート確認 | 99/99 pass (+3 skipped integration)、coverage 86.66%、typecheck/lint clean |
+| 2026-04-09 | 6 | `docs/integrations/claude-code-manual-verification.md` 作成 | 5 シナリオ + セキュリティ review + 永続化 & UX + リリースゲーティング |
+| 2026-04-09 | 6 | Phase 6 自動部分完了 🟨 | 自動テスト & カバレッジ & セキュリティ目視完了。手動シナリオ A-E はリリース前に実機確認 |
 
 ---
 

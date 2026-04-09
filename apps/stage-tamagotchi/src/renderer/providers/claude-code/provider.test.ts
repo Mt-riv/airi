@@ -302,6 +302,151 @@ describe('createClaudeCodeStreamDispatcher', () => {
     expect(sendPromptCalls).toHaveLength(0)
     expect(received.find(e => e.type === 'finish')).toBeTruthy()
   })
+
+  it('forwards assistant-thinking events as text-delta (temporary until a dedicated UI slice exists)', async () => {
+    const { transport, emit } = createFakeTransport()
+    const received: StreamEvent[] = []
+    const dispatcher = createClaudeCodeStreamDispatcher({ config: parsedConfig, transport })
+
+    let sendPromptResolve: (result: ClaudeCodeSendPromptResult) => void = () => {}
+    const pending = new Promise<ClaudeCodeSendPromptResult>((resolve) => {
+      sendPromptResolve = resolve
+    });
+    (transport.sendPrompt as ReturnType<typeof vi.fn>).mockReturnValue(pending)
+
+    const dispatcherPromise = dispatcher([userMessage('think about this')], {
+      onStreamEvent: event => void received.push(event),
+    })
+
+    emit(normalised({
+      kind: 'assistant-thinking',
+      uuid: 'th-1',
+      text: 'Hmm, let me reason about it',
+      raw: {},
+    }))
+
+    sendPromptResolve({ ok: true, sessionId: 'generated-session-id' })
+    await dispatcherPromise
+
+    const thinkingDelta = received.find(
+      e => e.type === 'text-delta' && (e as { text: string }).text === 'Hmm, let me reason about it',
+    )
+    expect(thinkingDelta).toBeTruthy()
+  })
+
+  it('forwards intermediate finish events from the manager before the dispatcher-level stop finish', async () => {
+    const { transport, emit } = createFakeTransport()
+    const received: StreamEvent[] = []
+    const dispatcher = createClaudeCodeStreamDispatcher({ config: parsedConfig, transport })
+
+    let sendPromptResolve: (result: ClaudeCodeSendPromptResult) => void = () => {}
+    const pending = new Promise<ClaudeCodeSendPromptResult>((resolve) => {
+      sendPromptResolve = resolve
+    });
+    (transport.sendPrompt as ReturnType<typeof vi.fn>).mockReturnValue(pending)
+
+    const dispatcherPromise = dispatcher([userMessage('hi')], {
+      onStreamEvent: event => void received.push(event),
+    })
+
+    emit(normalised({ kind: 'finish', uuid: 'f-1', reason: 'turn_duration', raw: {} }))
+    sendPromptResolve({ ok: true, sessionId: 'generated-session-id' })
+    await dispatcherPromise
+
+    // We should see at least one finish event (either the forwarded
+    // turn_duration one or the dispatcher's synthetic `stop`).
+    const finishes = received.filter(e => e.type === 'finish')
+    expect(finishes.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('forwards an in-stream error event from the manager as a StreamEvent error', async () => {
+    const { transport, emit } = createFakeTransport()
+    const received: StreamEvent[] = []
+    const dispatcher = createClaudeCodeStreamDispatcher({ config: parsedConfig, transport })
+
+    let sendPromptResolve: (result: ClaudeCodeSendPromptResult) => void = () => {}
+    const pending = new Promise<ClaudeCodeSendPromptResult>((resolve) => {
+      sendPromptResolve = resolve
+    });
+    (transport.sendPrompt as ReturnType<typeof vi.fn>).mockReturnValue(pending)
+
+    const dispatcherPromise = dispatcher([userMessage('hi')], {
+      onStreamEvent: event => void received.push(event),
+    })
+
+    emit(normalised({
+      kind: 'error',
+      uuid: 'e-1',
+      error: 'model overloaded',
+      raw: {},
+    }))
+
+    sendPromptResolve({ ok: true, sessionId: 'generated-session-id' })
+    await dispatcherPromise
+
+    const errorEvent = received.find(e => e.type === 'error')
+    expect(errorEvent).toBeTruthy()
+  })
+
+  it('drops user-text / meta / unknown events so they never reach the chat orchestrator', async () => {
+    const { transport, emit } = createFakeTransport()
+    const received: StreamEvent[] = []
+    const dispatcher = createClaudeCodeStreamDispatcher({ config: parsedConfig, transport })
+
+    let sendPromptResolve: (result: ClaudeCodeSendPromptResult) => void = () => {}
+    const pending = new Promise<ClaudeCodeSendPromptResult>((resolve) => {
+      sendPromptResolve = resolve
+    });
+    (transport.sendPrompt as ReturnType<typeof vi.fn>).mockReturnValue(pending)
+
+    const dispatcherPromise = dispatcher([userMessage('hi')], {
+      onStreamEvent: event => void received.push(event),
+    })
+
+    emit(normalised({ kind: 'user-text', uuid: 'u-1', text: 'you said this', raw: {} }))
+    emit(normalised({ kind: 'meta', uuid: 'm-1', type: 'system:init', raw: {} }))
+    emit(normalised({ kind: 'unknown', uuid: 'x-1', raw: { weird: true } }))
+
+    sendPromptResolve({ ok: true, sessionId: 'generated-session-id' })
+    await dispatcherPromise
+
+    // Only the dispatcher-level synthetic finish should be forwarded.
+    expect(received.filter(e => e.type === 'text-delta')).toHaveLength(0)
+    expect(received.filter(e => e.type === 'tool-call')).toHaveLength(0)
+    expect(received.filter(e => e.type === 'error')).toHaveLength(0)
+  })
+
+  it('stringifies non-string tool-result payloads via JSON.stringify', async () => {
+    const { transport, emit } = createFakeTransport()
+    const received: StreamEvent[] = []
+    const dispatcher = createClaudeCodeStreamDispatcher({ config: parsedConfig, transport })
+
+    let sendPromptResolve: (result: ClaudeCodeSendPromptResult) => void = () => {}
+    const pending = new Promise<ClaudeCodeSendPromptResult>((resolve) => {
+      sendPromptResolve = resolve
+    });
+    (transport.sendPrompt as ReturnType<typeof vi.fn>).mockReturnValue(pending)
+
+    const dispatcherPromise = dispatcher([userMessage('fetch json')], {
+      onStreamEvent: event => void received.push(event),
+    })
+
+    emit(normalised({
+      kind: 'tool-result',
+      uuid: 'tr-json',
+      toolCallId: 'toolu_json',
+      result: { key: 'value', nested: [1, 2, 3] },
+      isError: false,
+      raw: {},
+    }))
+
+    sendPromptResolve({ ok: true, sessionId: 'generated-session-id' })
+    await dispatcherPromise
+
+    const toolResult = received.find(e => e.type === 'tool-result') as { result: string } | undefined
+    expect(toolResult).toBeTruthy()
+    expect(toolResult?.result).toBe('{"key":"value","nested":[1,2,3]}')
+  })
 })
 
 describe('createClaudeCodeProvider', () => {

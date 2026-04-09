@@ -25,7 +25,8 @@ import {
   claudeCodeSendPrompt,
   claudeCodeStreamEvent,
 } from '../../../../shared/eventa'
-import { createClaudeCodeService } from './electron-service'
+import { onAppBeforeQuit } from '../../../libs/bootkit/lifecycle'
+import { createClaudeCodeService, setupClaudeCodeManager } from './electron-service'
 
 // NOTICE: mirror the plugins test setup — swap the Electron-bound
 //         createContext for a pure in-memory eventa context so we can drive
@@ -289,5 +290,51 @@ describe('createClaudeCodeService', () => {
     const callsAfterStop = emitSpy.mock.calls.filter(call => call[0] === claudeCodeStreamEvent).length
     expect(callsAfterFirst).toBe(1)
     expect(callsAfterStop).toBe(1)
+  })
+
+  it('converts thrown errors from resolveSlug into { ok: false } results', async () => {
+    const context = await createTestContext()
+    const fake = createFakeManager({
+      resolveSlug: vi.fn(async () => {
+        throw new Error('unexpected resolve failure')
+      }),
+    })
+    unsubscribe = createClaudeCodeService({ context, manager: fake })
+
+    const invoke = defineInvoke(context, claudeCodeResolveSlug)
+    const result = await invoke({ projectDir: '/bogus' })
+
+    expect(result).toEqual({ ok: false, error: 'unexpected resolve failure' })
+  })
+})
+
+describe('setupClaudeCodeManager', () => {
+  it('constructs a manager with defaults and registers an onAppBeforeQuit cleanup hook', async () => {
+    const manager = setupClaudeCodeManager()
+
+    expect(typeof manager.listSessions).toBe('function')
+    expect(typeof manager.sendPrompt).toBe('function')
+    expect(typeof manager.checkBinary).toBe('function')
+    expect(typeof manager.resolveSlug).toBe('function')
+    expect(onAppBeforeQuit).toHaveBeenCalledTimes(1)
+
+    // Pull out the registered shutdown callback and confirm it awaits
+    // manager.stopAll() — we replace stopAll with a spy so we can observe
+    // the call without hitting any real session / process state.
+    const shutdownCallback = (onAppBeforeQuit as unknown as import('vitest').Mock).mock.calls[0][0] as () => Promise<void>
+    const stopAllSpy = vi.spyOn(manager, 'stopAll').mockResolvedValue(undefined)
+    await shutdownCallback()
+    expect(stopAllSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('swallows errors thrown by manager.stopAll during shutdown', async () => {
+    const manager = setupClaudeCodeManager({ binaryPath: 'claude-test' })
+
+    const shutdownCallback = (onAppBeforeQuit as unknown as import('vitest').Mock).mock.calls.at(-1)![0] as () => Promise<void>
+    vi.spyOn(manager, 'stopAll').mockRejectedValue(new Error('stop exploded'))
+
+    // The shutdown hook must not reject — we rely on it completing so the
+    // main process can finish tearing down other injeca modules.
+    await expect(shutdownCallback()).resolves.toBeUndefined()
   })
 })
