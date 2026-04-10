@@ -3,6 +3,7 @@ import type { BrowserWindow } from 'electron'
 import type { I18n } from '../../../libs/i18n'
 import type { WindowAuthManager } from '../../../services/airi/auth'
 import type { ServerChannel } from '../../../services/airi/channel-server'
+import type { ClaudeCodeManager } from '../../../services/airi/claude-code'
 import type { McpStdioManager } from '../../../services/airi/mcp-servers'
 import type { AutoUpdater } from '../../../services/electron/auto-updater'
 import type { NoticeWindowManager } from '../../notice'
@@ -16,6 +17,7 @@ import { ipcMain } from 'electron'
 
 import { electronOpenChat, electronOpenMainDevtools, electronOpenSettings, noticeWindowEventa } from '../../../../shared/eventa'
 import { createAuthService } from '../../../services/airi/auth'
+import { createClaudeCodeService } from '../../../services/airi/claude-code/electron-service'
 import { createMcpServersService } from '../../../services/airi/mcp-servers'
 import { createOnboardingService } from '../../../services/airi/onboarding'
 import { createWidgetsService } from '../../../services/airi/widgets'
@@ -32,6 +34,7 @@ export async function setupMainWindowElectronInvokes(params: {
   autoUpdater: AutoUpdater
   serverChannel: ServerChannel
   mcpStdioManager: McpStdioManager
+  claudeCodeManager: ClaudeCodeManager
   i18n: I18n
   onboardingWindowManager: OnboardingWindowManager
   windowAuthManager: WindowAuthManager
@@ -47,6 +50,10 @@ export async function setupMainWindowElectronInvokes(params: {
   createWidgetsService({ context, widgetsManager: params.widgetsManager, window: params.window })
   createAutoUpdaterService({ context, window: params.window, service: params.autoUpdater })
   createMcpServersService({ context, manager: params.mcpStdioManager })
+  // The main (stage) window is the chat-sync authority — it runs the chat
+  // orchestrator and needs live stream events from the Claude Code runner.
+  // Other windows (chat follower, settings) only need the invoke handlers.
+  createClaudeCodeService({ context, manager: params.claudeCodeManager, broadcastStreamEvents: true })
   createOnboardingService({ context, onboardingWindowManager: params.onboardingWindowManager })
   createAuthService({ context, window: params.window, windowAuthManager: params.windowAuthManager })
 

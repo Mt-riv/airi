@@ -7,7 +7,7 @@ import { validateClaudeCodeConfig } from './validate'
 function createValidatorTransport(overrides: Partial<ClaudeCodeTransport> = {}): ClaudeCodeTransport {
   return {
     sendPrompt: vi.fn(async () => ({ ok: true as const, sessionId: 'ignored' })),
-    onStreamEvent: vi.fn(() => () => {}),
+    setStreamCallback: vi.fn(() => {}),
     checkBinary: vi.fn(async () => ({ ok: true as const, version: '2.1.96', path: 'claude' })),
     resolveSlug: vi.fn(async input => ({
       ok: true as const,

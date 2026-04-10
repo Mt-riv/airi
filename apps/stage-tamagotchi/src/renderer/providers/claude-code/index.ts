@@ -63,6 +63,26 @@ export const providerClaudeCode = defineProvider<typeof claudeCodeConfigSchema._
     return createClaudeCodeProvider(parsed)
   },
 
+  // NOTICE: Claude Code does not expose a queryable model list — the CLI
+  //         picks its own model internally based on the user's Anthropic
+  //         account + per-turn heuristics. We still need to satisfy Airi's
+  //         consciousness store which requires at least one model entry
+  //         before it will activate a provider, so return a single
+  //         synthetic "default" model. The id is passed through to
+  //         `llmStore.stream(model, …)` but our `__airi_claudeCodeStream`
+  //         override ignores it before hitting the CLI, so the string
+  //         never makes it to a `--model` flag.
+  extraMethods: {
+    listModels: async () => [
+      {
+        id: 'claude-code-default',
+        name: 'Claude Code (CLI managed)',
+        provider: 'claude-code',
+        description: 'Claude Code CLI が内部で選択するモデル。Airi からはモデル指定を行いません。',
+      },
+    ],
+  },
+
   validationRequiredWhen: () => true,
   validators: {
     validateConfig: [

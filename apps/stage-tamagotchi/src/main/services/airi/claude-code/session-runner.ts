@@ -77,7 +77,14 @@ export function createSessionRunner(options: SessionRunnerOptions): SessionRunne
     assertSafeArgument('projectDir', projectDir)
     assertSafeArgument('binaryPath', binaryPath)
 
-    const args: string[] = ['-p', input.text, '--output-format', 'stream-json', '--verbose', '--include-partial-messages']
+    // NOTICE: `--include-partial-messages` is deliberately NOT used.
+    //         It causes every text delta to appear twice with different
+    //         UUIDs (one from the real API streaming event, one from a
+    //         synthetic partial-message snapshot), making deduplication
+    //         impossible without content-based hashing. Without the flag,
+    //         text arrives only in the final `assistant` message — no
+    //         streaming, but zero duplication.
+    const args: string[] = ['-p', input.text, '--output-format', 'stream-json', '--verbose']
     if (input.sessionId != null) {
       args.push('--resume', input.sessionId)
     }

@@ -61,7 +61,6 @@ describe('createSessionRunner', () => {
       '--output-format',
       'stream-json',
       '--verbose',
-      '--include-partial-messages',
     ])
     expect(options).toMatchObject({
       cwd: '/Users/dev/airi',

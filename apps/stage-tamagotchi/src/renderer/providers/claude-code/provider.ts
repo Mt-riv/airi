@@ -43,7 +43,16 @@ export type ClaudeCodeChatProvider = ChatProvider & {
 // resolve to the shared renderer eventa context.
 export interface ClaudeCodeTransport {
   sendPrompt: (payload: ClaudeCodeSendPromptInput) => Promise<ClaudeCodeSendPromptResult>
-  onStreamEvent: (listener: (payload: ClaudeCodeStreamEventPayload) => void) => () => void
+  /**
+   * Set the active stream event callback. Only ONE callback is active at a
+   * time — calling this replaces the previous one. Pass `null` to stop
+   * receiving events. The transport registers its IPC listener ONCE at
+   * creation time and routes incoming events to the current callback,
+   * avoiding the subscribe/unsubscribe pattern that leaks listeners when
+   * the Eventa renderer adapter doesn't properly remove `ipcRenderer.on`
+   * handlers.
+   */
+  setStreamCallback: (callback: ((payload: ClaudeCodeStreamEventPayload) => void) | null) => void
   checkBinary: (payload: ClaudeCodeCheckBinaryInput) => Promise<ClaudeCodeCheckBinaryResult>
   resolveSlug: (payload: ClaudeCodeResolveSlugInput) => Promise<ClaudeCodeResolveSlugResult>
 }
@@ -54,17 +63,42 @@ export function createDefaultTransport(): ClaudeCodeTransport {
   const invokeCheckBinary = defineInvoke(context, claudeCodeCheckBinary)
   const invokeResolveSlug = defineInvoke(context, claudeCodeResolveSlug)
 
+  // Single persistent IPC listener — registered ONCE at transport creation.
+  // The active callback is swapped per-message via `setStreamCallback` so we
+  // never accumulate leaked `ipcRenderer.on` handlers (the Eventa renderer
+  // adapter's unsubscribe may not reliably remove them).
+  let activeCallback: ((payload: ClaudeCodeStreamEventPayload) => void) | null = null
+
+  context.on(claudeCodeStreamEvent, (raw) => {
+    if (activeCallback == null)
+      return
+
+    try {
+      if (raw == null || typeof raw !== 'object')
+        return
+
+      const envelope = raw as unknown as Record<string, unknown>
+      const inner = (envelope.body != null && typeof envelope.body === 'object'
+        ? envelope.body
+        : envelope) as Record<string, unknown>
+
+      const sessionId = typeof inner.sessionId === 'string' ? inner.sessionId : ''
+      const event = inner.event as NormalizedClaudeCodeEvent | undefined
+
+      if (event != null && typeof event === 'object' && 'kind' in event) {
+        activeCallback({ sessionId, event })
+      }
+    }
+    catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn('[claude-code] stream event parse error:', error)
+    }
+  })
+
   return {
     sendPrompt: payload => invokeSendPrompt(payload),
-    onStreamEvent: (listener) => {
-      return context.on(claudeCodeStreamEvent, (payload) => {
-        if (payload)
-          // NOTICE: `context.on` types the handler as receiving the event
-          //         definition itself (`Eventa<P, ...>`); in practice the
-          //         renderer adapter forwards the decoded `P` payload. Cast
-          //         through `unknown` to bridge the declared shape.
-          listener(payload as unknown as ClaudeCodeStreamEventPayload)
-      })
+    setStreamCallback: (callback) => {
+      activeCallback = callback
     },
     checkBinary: payload => invokeCheckBinary(payload),
     resolveSlug: payload => invokeResolveSlug(payload),
@@ -158,20 +192,48 @@ export function createClaudeCodeStreamDispatcher(
   const transport = options.transport ?? createDefaultTransport()
   let currentSessionId: string | null = options.config.sessionId ?? null
 
+  // UUID-based deduplication set. Cleared per-message so it doesn't grow
+  // unboundedly across a long session. This is the definitive guard against
+  // duplicate events regardless of their source — `--include-partial-messages`
+  // partial snapshots, Eventa adapter IPC replays, or multi-window broadcast
+  // races.
+  const seenUuids = new Set<string>()
+
   return async function streamClaudeCode(messages, streamOptions) {
+    seenUuids.clear()
+    // eslint-disable-next-line no-console
+    console.log('[claude-code] streamClaudeCode invoked', { messageCount: messages.length, currentSessionId })
+
     const text = lastUserMessageText(messages)
     if (text.length === 0) {
+      // eslint-disable-next-line no-console
+      console.warn('[claude-code] empty prompt, emitting no_input finish')
       // Nothing actionable — emit a no-op finish so the orchestrator
       // unwinds cleanly.
       await streamOptions?.onStreamEvent?.({ type: 'finish', finishReason: 'no_input' } as StreamEvent)
       return
     }
 
-    // Subscribe before sending so early stdout events cannot race past us.
-    const unsubscribe = transport.onStreamEvent((payload) => {
-      // Once we know the session id, filter tightly. Before that, forward
-      // anything the transport delivers (there is only one active runner
-      // so spurious cross-talk is not a concern in Phase 3).
+    let receivedEventCount = 0
+
+    // Activate the stream callback before sending so early stdout events
+    // cannot race past us. Only ONE callback is active at a time — the
+    // transport routes all incoming IPC events to it.
+    transport.setStreamCallback((payload) => {
+      receivedEventCount += 1
+
+      // UUID-based dedup — skip events we've already processed.
+      const eventUuid = payload.event.uuid
+      if (eventUuid && seenUuids.has(eventUuid)) {
+        // eslint-disable-next-line no-console
+        console.log('[claude-code] DEDUP skip uuid:', eventUuid.slice(0, 8), 'kind:', payload.event.kind)
+        return
+      }
+      if (eventUuid) {
+        seenUuids.add(eventUuid)
+      }
+
+      // Once we know the session id, filter tightly.
       if (currentSessionId != null && payload.sessionId !== currentSessionId)
         return
 
@@ -179,15 +241,23 @@ export function createClaudeCodeStreamDispatcher(
       if (streamEvent == null)
         return
 
+      // eslint-disable-next-line no-console
+      console.log('[claude-code] PASS uuid:', eventUuid?.slice(0, 8), 'kind:', payload.event.kind, 'text:', (streamEvent as { text?: string }).text?.slice(0, 20))
       void streamOptions?.onStreamEvent?.(streamEvent)
     })
 
     try {
+      // eslint-disable-next-line no-console
+      console.log('[claude-code] sending prompt via IPC', { projectDir: options.config.projectDir, sessionId: currentSessionId, textLength: text.length })
+
       const result = await transport.sendPrompt({
         projectDir: options.config.projectDir,
         sessionId: currentSessionId,
         text,
       })
+
+      // eslint-disable-next-line no-console
+      console.log('[claude-code] sendPrompt result', { ...result, receivedEventCount })
 
       if (result.ok) {
         if (result.sessionId != null)
@@ -211,7 +281,7 @@ export function createClaudeCodeStreamDispatcher(
       throw new Error(result.error)
     }
     finally {
-      unsubscribe()
+      transport.setStreamCallback(null)
     }
   }
 }

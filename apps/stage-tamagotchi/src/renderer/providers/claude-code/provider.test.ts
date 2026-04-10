@@ -22,7 +22,7 @@ function createFakeTransport(options?: {
   sendPromptResult?: ClaudeCodeSendPromptResult
   sendPromptError?: Error
 }) {
-  const listeners = new Set<(payload: ClaudeCodeStreamEventPayload) => void>()
+  let activeCallback: ((payload: ClaudeCodeStreamEventPayload) => void) | null = null
   const sendPromptCalls: ClaudeCodeSendPromptInput[] = []
 
   const sendPromptImpl = async (payload: ClaudeCodeSendPromptInput): Promise<ClaudeCodeSendPromptResult> => {
@@ -34,9 +34,8 @@ function createFakeTransport(options?: {
 
   const transport: ClaudeCodeTransport = {
     sendPrompt: vi.fn<(payload: ClaudeCodeSendPromptInput) => Promise<ClaudeCodeSendPromptResult>>(sendPromptImpl),
-    onStreamEvent: vi.fn((listener) => {
-      listeners.add(listener)
-      return () => listeners.delete(listener)
+    setStreamCallback: vi.fn((callback) => {
+      activeCallback = callback
     }),
     checkBinary: vi.fn(async () => ({ ok: true as const, version: '2.1.96', path: 'claude' })),
     resolveSlug: vi.fn(async input => ({
@@ -50,9 +49,9 @@ function createFakeTransport(options?: {
     transport,
     sendPromptCalls,
     emit: (payload: ClaudeCodeStreamEventPayload) => {
-      listeners.forEach(l => l(payload))
+      activeCallback?.(payload)
     },
-    listenerCount: () => listeners.size,
+    listenerCount: () => activeCallback != null ? 1 : 0,
   }
 }
 

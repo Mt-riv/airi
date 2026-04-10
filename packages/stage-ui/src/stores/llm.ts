@@ -84,7 +84,12 @@ export function isClaudeCodeChatProvider(
 }
 
 async function streamFrom(model: string, chatProvider: ChatProvider, messages: Message[], sendSparkCommand: (command: WebSocketEvents['spark:command']) => void, options?: StreamOptions) {
+  // eslint-disable-next-line no-console
+  console.log('[llm] streamFrom called', { model, hasMarker: AIRI_CLAUDE_CODE_STREAM_METHOD in chatProvider, isClaudeCode: isClaudeCodeChatProvider(chatProvider) })
+
   if (isClaudeCodeChatProvider(chatProvider)) {
+    // eslint-disable-next-line no-console
+    console.log('[llm] delegating to __airi_claudeCodeStream')
     await chatProvider[AIRI_CLAUDE_CODE_STREAM_METHOD](messages, options)
     return
   }

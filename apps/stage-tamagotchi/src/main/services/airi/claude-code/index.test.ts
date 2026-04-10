@@ -153,7 +153,7 @@ describe('createClaudeCodeManager', () => {
     await manager.detachSession({ sessionId: 'session-detach' })
     await appendFile(sessionFile, jsonl({
       type: 'assistant',
-      uuid: 'a-1',
+      uuid: 'a-ignored',
       message: { role: 'assistant', content: [{ type: 'text', text: 'ignored' }] },
     }))
     await new Promise(resolve => setTimeout(resolve, 150))
