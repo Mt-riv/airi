@@ -25,14 +25,15 @@ import {
  * is the chat-sync authority and has the Eventa context wired to the
  * main process's `ClaudeCodeManager`.
  *
+ * Controlled via localStorage:
+ *   - `claude-code-speech-enabled`: boolean
+ *   - `claude-code-speech-project-dir`: absolute path string
+ *
  * Inspired by cc-mascot's passive log-monitoring approach.
  */
 export function useClaudeCodeSpeech() {
   const enabled = useLocalStorage('claude-code-speech-enabled', false)
   const projectDir = useLocalStorage('claude-code-speech-project-dir', '')
-
-  // eslint-disable-next-line no-console
-  console.log('[claude-code-speech] init, enabled:', enabled.value, 'projectDir:', projectDir.value)
   const currentSessionId = ref<string | null>(null)
   const isAttached = ref(false)
 
@@ -44,8 +45,6 @@ export function useClaudeCodeSpeech() {
   const invokeAttachSession = defineInvoke(context, claudeCodeAttachSession)
 
   // Single persistent IPC listener for stream events.
-  // Activated/deactivated via the `enabled` flag — when disabled, events
-  // are received but silently dropped.
   context.on(claudeCodeStreamEvent, (raw) => {
     if (!enabled.value || !isAttached.value)
       return
@@ -69,20 +68,15 @@ export function useClaudeCodeSpeech() {
       if (cleaned.length === 0)
         return
 
-      // eslint-disable-next-line no-console
-      console.log('[claude-code-speech] reading aloud:', cleaned.slice(0, 80))
-      characterStore.emitTextOutput(cleaned)
+      characterStore.emitTextOutput(cleaned).catch(() => {
+        // Best-effort — swallow TTS errors so the watcher keeps running.
+      })
     }
     catch {
-      // Silently ignore malformed events — the watcher is best-effort.
+      // Silently ignore malformed events.
     }
   })
 
-  /**
-   * Attach to the most recently modified JSONL session for the configured
-   * project directory. Called automatically when `enabled` or `projectDir`
-   * changes, or can be triggered manually.
-   */
   async function attachToLatestSession() {
     if (!projectDir.value || !enabled.value) {
       isAttached.value = false
@@ -97,7 +91,6 @@ export function useClaudeCodeSpeech() {
         return
       }
 
-      // Sessions are sorted newest-first by the manager.
       const latest = sessions[0]
       currentSessionId.value = latest.meta.sessionId
 
@@ -107,12 +100,8 @@ export function useClaudeCodeSpeech() {
       })
 
       isAttached.value = true
-      // eslint-disable-next-line no-console
-      console.log('[claude-code-speech] attached to session:', latest.meta.sessionId)
     }
-    catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('[claude-code-speech] attach failed:', error)
+    catch {
       isAttached.value = false
       currentSessionId.value = null
     }
@@ -130,15 +119,10 @@ export function useClaudeCodeSpeech() {
   }, { immediate: true })
 
   return {
-    /** Whether Claude Code speech readout is active. */
     enabled,
-    /** The project directory to monitor. */
     projectDir,
-    /** The session ID currently being watched (null if not attached). */
     currentSessionId,
-    /** Whether the watcher is actively attached to a session. */
     isAttached,
-    /** Manually re-attach to the latest session. */
     attachToLatestSession,
   }
 }

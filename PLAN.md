@@ -36,7 +36,7 @@
 |---|---|---|---|---|
 | New-1 | Cleanup + TextFilter | ✅ 完了 | 2026-04-11 | chat provider 削除 + textFilter 31 tests |
 | New-2 | Speech Bridge + 設定簡素化 | ✅ 完了 | 2026-04-11 | composable + stage mount |
-| New-3 | 統合テスト + 検証 | ⬜ 未着手 | — | dev build で読み上げ動作確認 |
+| New-3 | 統合テスト + 検証 | ✅ 完了 | 2026-04-11 | 読み上げ動作確認済 |
 
 **状態凡例**: ⬜ 未着手 / 🟨 進行中 / ✅ 完了 / ❌ 撤回 / 🟥 ブロック
 
