@@ -22,13 +22,17 @@ const availableVoices = computed(() => {
 })
 
 onMounted(async () => {
-  // Initialize provider with default base URL if not set
+  providersStore.initializeProvider(providerId)
   if (!providers.value[providerId]) {
     providers.value[providerId] = { baseUrl: 'http://127.0.0.1:50021' }
   }
   if (!providers.value[providerId].baseUrl) {
     providers.value[providerId].baseUrl = 'http://127.0.0.1:50021'
   }
+
+  // Mark as added so it appears in consciousness settings speech selector
+  providersStore.markProviderAdded(providerId)
+  providersStore.forceProviderConfigured(providerId)
 
   await providersStore.fetchModelsForProvider(providerId)
   await speechStore.loadVoicesForProvider(providerId)
