@@ -30,6 +30,9 @@ import {
 export function useClaudeCodeSpeech() {
   const enabled = useLocalStorage('claude-code-speech-enabled', false)
   const projectDir = useLocalStorage('claude-code-speech-project-dir', '')
+
+  // eslint-disable-next-line no-console
+  console.log('[claude-code-speech] init, enabled:', enabled.value, 'projectDir:', projectDir.value)
   const currentSessionId = ref<string | null>(null)
   const isAttached = ref(false)
 
@@ -66,6 +69,8 @@ export function useClaudeCodeSpeech() {
       if (cleaned.length === 0)
         return
 
+      // eslint-disable-next-line no-console
+      console.log('[claude-code-speech] reading aloud:', cleaned.slice(0, 80))
       characterStore.emitTextOutput(cleaned)
     }
     catch {
@@ -102,8 +107,12 @@ export function useClaudeCodeSpeech() {
       })
 
       isAttached.value = true
+      // eslint-disable-next-line no-console
+      console.log('[claude-code-speech] attached to session:', latest.meta.sessionId)
     }
-    catch {
+    catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('[claude-code-speech] attach failed:', error)
       isAttached.value = false
       currentSessionId.value = null
     }
