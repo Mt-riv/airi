@@ -50,10 +50,7 @@ export async function setupMainWindowElectronInvokes(params: {
   createWidgetsService({ context, widgetsManager: params.widgetsManager, window: params.window })
   createAutoUpdaterService({ context, window: params.window, service: params.autoUpdater })
   createMcpServersService({ context, manager: params.mcpStdioManager })
-  // The main (stage) window is the chat-sync authority — it runs the chat
-  // orchestrator and needs live stream events from the Claude Code runner.
-  // Other windows (chat follower, settings) only need the invoke handlers.
-  createClaudeCodeService({ context, manager: params.claudeCodeManager, broadcastStreamEvents: true })
+  createClaudeCodeService({ context, manager: params.claudeCodeManager })
   createOnboardingService({ context, onboardingWindowManager: params.onboardingWindowManager })
   createAuthService({ context, window: params.window, windowAuthManager: params.windowAuthManager })
 

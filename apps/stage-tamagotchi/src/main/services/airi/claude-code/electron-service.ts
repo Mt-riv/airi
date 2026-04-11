@@ -63,16 +63,6 @@ export function setupClaudeCodeManager(options: SetupClaudeCodeManagerOptions = 
 export interface CreateClaudeCodeServiceParams {
   context: ReturnType<typeof createContext>['context']
   manager: ClaudeCodeManager
-  /**
-   * When true, the service subscribes to `manager.onEvent` and broadcasts
-   * every normalised event to the renderer via `claudeCodeStreamEvent`.
-   * Only ONE window should enable this — the authority window that runs
-   * the chat orchestrator. Other windows only need the invoke handlers
-   * for settings-page probes / session listing.
-   *
-   * Defaults to `false` so callers must opt in explicitly.
-   */
-  broadcastStreamEvents?: boolean
 }
 
 /**
@@ -83,7 +73,7 @@ export interface CreateClaudeCodeServiceParams {
  * cleanly.
  */
 export function createClaudeCodeService(params: CreateClaudeCodeServiceParams): () => void {
-  const { context, manager, broadcastStreamEvents = false } = params
+  const { context, manager } = params
   const log = useLogg('main/claude-code').useGlobalConfig()
 
   defineInvokeHandlers(context, {
@@ -154,20 +144,14 @@ export function createClaudeCodeService(params: CreateClaudeCodeServiceParams): 
     },
   })
 
-  // Only the authority window (broadcastStreamEvents: true) subscribes to
-  // the manager's event emitter and forwards to the renderer. Without this
-  // guard, every window that calls `createClaudeCodeService` adds another
-  // subscriber, and the renderer sees N copies of every event.
-  const unsubscribe = broadcastStreamEvents
-    ? manager.onEvent((sessionId, event) => {
-      try {
-        context.emit(claudeCodeStreamEvent, { sessionId, event })
-      }
-      catch (error) {
-        log.withError(error).warn('failed to broadcast claude-code stream event')
-      }
-    })
-    : () => {}
+  const unsubscribe = manager.onEvent((sessionId, event) => {
+    try {
+      context.emit(claudeCodeStreamEvent, { sessionId, event })
+    }
+    catch (error) {
+      log.withError(error).warn('failed to broadcast claude-code stream event')
+    }
+  })
 
   return unsubscribe
 }

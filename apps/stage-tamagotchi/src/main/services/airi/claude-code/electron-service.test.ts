@@ -260,7 +260,7 @@ describe('createClaudeCodeService', () => {
     const context = await createTestContext()
     const emitSpy = vi.spyOn(context, 'emit')
     const fake = createFakeManager()
-    unsubscribe = createClaudeCodeService({ context, manager: fake, broadcastStreamEvents: true })
+    unsubscribe = createClaudeCodeService({ context, manager: fake })
 
     fake.emit('sess-broadcast', {
       kind: 'assistant-text',
@@ -279,7 +279,7 @@ describe('createClaudeCodeService', () => {
     const context = await createTestContext()
     const emitSpy = vi.spyOn(context, 'emit')
     const fake = createFakeManager()
-    const stop = createClaudeCodeService({ context, manager: fake, broadcastStreamEvents: true })
+    const stop = createClaudeCodeService({ context, manager: fake })
 
     fake.emit('sess', { kind: 'user-text', uuid: 'u-1', text: 'one', raw: {} })
     const callsAfterFirst = emitSpy.mock.calls.filter(call => call[0] === claudeCodeStreamEvent).length

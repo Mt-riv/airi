@@ -1,30 +1,44 @@
 # Claude Code × Airi 統合 実装計画
 
-> **目的**: Airi のチャットウインドウを Claude Code CLI のフロントエンドとして機能させる。
-> 1. Claude Code TUI で進行中の会話履歴を Airi チャットにミラーする
-> 2. Airi チャットからプロンプトを送信し、同一セッションに追記できる
+> **目的**: ~~Airi のチャットウインドウを Claude Code CLI のフロントエンドとして機能させる。~~
+> **方針転換 (2026-04-11)**: チャットウインドウ統合を撤回。代わりに **Airi のキャラクターアバターが Claude Code の応答を読み上げる** パッシブ監視方式に変更。参考実装: [cc-mascot](https://github.com/kazakago/cc-mascot)
 >
-> **対象**: `apps/stage-tamagotchi` (Electron) のみ。`stage-web` / `stage-pocket` は対象外。
-> **方針**: ヘッドレス `claude -p --resume <id>` + JSONL tail のハイブリッド経路。Agent SDK 直叩きはしない（既存 TUI にアタッチできないため）。
+> **新しい目的**:
+> 1. Claude Code の JSONL セッションログをファイル監視し、assistant 応答テキストを抽出
+> 2. テキストから Markdown / コードブロック / URL を除去
+> 3. Airi 既存の TTS パイプライン (`characterStore.emitTextOutput`) に流し、VRM キャラクターが口パクで読み上げ
+>
+> **対象**: `apps/stage-tamagotchi` (Electron) のみ。
+> **方針**: JSONL tail によるパッシブ監視。Claude Code 側の設定変更不要、コンテキスト消費ゼロ。
 > **開始日**: 2026-04-08
-> **最終更新**: 2026-04-08
+> **最終更新**: 2026-04-11
 
 ---
 
 ## 進捗ダッシュボード
 
+### 旧フェーズ（チャットウインドウ統合 — 撤回）
+
 | Phase | 概要 | 状態 | 完了日 | 備考 |
 |---|---|---|---|---|
-| Phase 0 | リサーチ検証 & POC | ✅ 完了 | 2026-04-08 | JSONL スキーマ確定 / POC tail 動作 |
-| Phase 1 | Electron main: ClaudeCodeService | ✅ 完了 | 2026-04-09 | TDD / 44 tests / coverage 84% |
-| Phase 2 | Eventa IPC コントラクト | ✅ 完了 | 2026-04-09 | 5 contracts + service wiring |
-| Phase 3 | Airi Provider として登録 | ✅ 完了 | 2026-04-09 | stage-ui 分岐点 + tamagotchi renderer provider |
-| Phase 4 | i18n | ✅ 完了 | 2026-04-09 | en / ja / zh-Hans / provider localised |
-| Phase 5 | UI: 設定 & セッションセレクタ | 🟨 部分完了 | 2026-04-09 | 自動部分完了 / ビジュアル検証 & セッションセレクタは残保留 |
-| Phase 6 | テスト & 品質 | 🟨 自動部分完了 | 2026-04-09 | 統合テスト + カバレッジ 86.66% / 手動シナリオ A-E 文書化済 |
-| Phase 7 | ドキュメント | ⬜ 未着手 | — | README × 3 |
+| Phase 0 | リサーチ検証 & POC | ✅ 完了 | 2026-04-08 | JSONL スキーマ確定 — **新方針でも有効** |
+| Phase 1 | SessionWatcher / normalizer | ✅ 完了 | 2026-04-09 | **新方針の核心インフラとして継続使用** |
+| Phase 2 | Eventa IPC コントラクト | ✅ 完了 | 2026-04-09 | **streamEvent broadcast を継続使用** |
+| Phase 3 | Chat Provider 登録 | ❌ 撤回 | 2026-04-09 | llm.ts 分岐 + provider → 削除対象 |
+| Phase 4 | i18n | ✅ 完了 | 2026-04-09 | 設定ページ用キーは残す |
+| Phase 5 | UI: 設定 & バリデータ | 🟨 部分完了 | 2026-04-09 | checkBinary / resolveSlug は残す |
+| Phase 6 | テスト & 品質 | 🟨 部分完了 | 2026-04-09 | 統合テスト + カバレッジ 86.66% |
+| Phase 7 | ドキュメント | ⬜ 未着手 | — | |
 
-**状態凡例**: ⬜ 未着手 / 🟨 進行中 / ✅ 完了 / 🟥 ブロック
+### 新フェーズ（読み上げモード）
+
+| Phase | 概要 | 状態 | 完了日 | 備考 |
+|---|---|---|---|---|
+| New-1 | Cleanup + TextFilter | ✅ 完了 | 2026-04-11 | chat provider 削除 + textFilter 31 tests |
+| New-2 | Speech Bridge + 設定簡素化 | ⬜ 未着手 | — | watcher → emitTextOutput 接続 |
+| New-3 | 統合テスト + 検証 | ⬜ 未着手 | — | dev build で読み上げ動作確認 |
+
+**状態凡例**: ⬜ 未着手 / 🟨 進行中 / ✅ 完了 / ❌ 撤回 / 🟥 ブロック
 
 ---
 
@@ -695,3 +709,137 @@ pnpm lint:fix
 # ビルド
 pnpm -F @proj-airi/stage-tamagotchi build
 ```
+
+---
+
+## 方針転換: 読み上げモード (2026-04-11)
+
+### 背景
+
+チャットウインドウ統合（Phase 3-8）で以下の問題に直面:
+- マルチウインドウ authority/follower 構造による IPC 複雑化
+- Eventa adapter の envelope unwrapping / listener leak
+- `--include-partial-messages` による duplicate text delta（異なる UUID で同一テキスト出力）
+- chat-sync の 30 秒 timeout
+
+根本的に「Airi からプロンプト送信」するアプローチを撤回し、**パッシブ監視 + 読み上げ** に切り替える。
+参考: [cc-mascot](https://github.com/kazakago/cc-mascot) ([解説記事](https://qiita.com/kazakago/items/287f91082ab59f581c09))
+
+### アーキテクチャ
+
+```
+Claude Code CLI → ~/.claude/projects/<slug>/<session>.jsonl
+                     ↓ SessionWatcher (既存 Phase 1)
+              normalizeClaudeCodeLine → assistant-text 抽出
+                     ↓ Eventa claudeCodeStreamEvent (既存 Phase 2)
+              ClaudeCodeSpeechBridge (★ 新規 composable)
+                     ↓ textFilter でMarkdown/コード除去 (★ 新規)
+              characterStore.emitTextOutput(cleanedText) (既存 API)
+                     ↓
+              speechRuntime → TTS API → AudioBuffer → wLipSync
+                     ↓
+              VRM expressionManager → キャラが口パクで読み上げ ✅
+```
+
+### 継続使用するコード
+
+| ファイル | Phase | 用途 |
+|---|---|---|
+| `main/services/airi/claude-code/session-watcher.ts` | 1 | JSONL tail |
+| `main/services/airi/claude-code/jsonl-to-stream-event.ts` | 1 | イベント正規化 |
+| `main/services/airi/claude-code/project-slug.ts` | 1 | slug 解決 |
+| `main/services/airi/claude-code/index.ts` | 1 | Manager (listSessions/attachSession) |
+| `main/services/airi/claude-code/binary-prober.ts` | 5 | バイナリ実在確認 |
+| `main/services/airi/claude-code/electron-service.ts` | 2 | Eventa handler |
+| `shared/claude-code.ts` | 2 | 共有型 |
+| `shared/eventa.ts` (claudeCode* contracts) | 2 | IPC contracts |
+
+### 削除するコード
+
+| ファイル / 変更 | Phase | 理由 |
+|---|---|---|
+| `packages/stage-ui/src/stores/llm.ts` の分岐 | 3 | chat provider 不要 |
+| `renderer/providers/claude-code/` 全体 | 3 | chat provider 不要 |
+| `renderer/pages/settings/providers/chat/claude-code.vue` | 5 fix | chat 設定ページ不要 |
+| `renderer/main.ts` の `import './providers/claude-code'` | 3 | side-effect import 不要 |
+| `extraMethods.listModels` (合成モデル) | fix | consciousness store 不要 |
+| window RPC の `broadcastStreamEvents` | fix | speech bridge が直接 subscribe |
+
+---
+
+## New-1: Cleanup + TextFilter
+
+**目的**: チャット統合の残骸を削除し、テキスト浄化ユーティリティを新規作成。
+
+### 1A: Cleanup (chat provider 削除)
+- [ ] `packages/stage-ui/src/stores/llm.ts` — `isClaudeCodeChatProvider` / `AIRI_CLAUDE_CODE_STREAM_METHOD` / `streamFrom` 内の分岐を削除
+- [ ] `apps/stage-tamagotchi/src/renderer/providers/claude-code/` — ディレクトリごと削除
+- [ ] `apps/stage-tamagotchi/src/renderer/pages/settings/providers/chat/claude-code.vue` — 削除
+- [ ] `apps/stage-tamagotchi/src/renderer/main.ts` — `import './providers/claude-code'` 行を削除
+- [ ] `apps/stage-tamagotchi/src/main/windows/main/rpc/index.electron.ts` — `broadcastStreamEvents: true` → `broadcastStreamEvents` パラメータ自体を削除（後で speech bridge 側で制御）
+- [ ] `electron-service.ts` — `broadcastStreamEvents` option 削除、stream forwarder を常に登録に戻す（speech bridge の subscribe 先として必要）
+- [ ] typecheck + lint + test pass 確認
+
+### 1B: TextFilter (テキスト浄化)
+- [ ] `apps/stage-tamagotchi/src/main/services/airi/claude-code/text-filter.ts` 新規
+  - `cleanTextForSpeech(text: string): string` — Markdown/コード/URL 除去
+  - `splitIntoSentences(text: string): string[]` — 文単位分割
+- [ ] `text-filter.test.ts` TDD
+  - コードブロック除去 (```...```)
+  - インラインコード除去 (`...`)
+  - XML/HTML タグ除去
+  - Markdown 見出し (#, ##) 除去
+  - URL 除去
+  - テーブル構文除去 (|...|)
+  - リストマーカー除去 (-, *)
+  - git ハッシュ除去 (7-40文字 hex)
+  - 日本語句点 (。!？) / 英語ピリオド (.!?) での文分割
+  - 空文字列 / 空白のみ → 空配列
+
+### 品質ゲート
+- [ ] typecheck pass
+- [ ] 既存テスト全 pass（削除による退行なし）
+- [ ] textFilter テスト pass
+- [ ] lint clean
+
+---
+
+## New-2: Speech Bridge + 設定簡素化
+
+**目的**: SessionWatcher の assistant-text イベントを Airi の TTS パイプラインに接続。
+
+### 2A: ClaudeCodeSpeechBridge
+- [ ] `apps/stage-tamagotchi/src/renderer/composables/use-claude-code-speech.ts` 新規
+  - `useClaudeCodeSpeech(options: { projectDir, enabled })` composable
+  - `claudeCodeStreamEvent` を subscribe (Eventa IPC)
+  - `assistant-text` イベントのみフィルタ
+  - `cleanTextForSpeech()` でテキスト浄化
+  - `characterStore.emitTextOutput(cleanedText)` で読み上げトリガ
+  - `enabled` ref で ON/OFF 制御
+- [ ] 自動セッション追尾: `claudeCodeListSessions` で最新セッションを取得 → `claudeCodeAttachSession` で watcher 起動
+- [ ] main process: `electron-service.ts` の stream broadcast を全ウインドウに常時有効化（broadcastStreamEvents 削除済み前提）
+
+### 2B: 設定ページ簡素化
+- [ ] `claude-code.vue` を「読み上げモード」用に改修
+  - projectDir フィールド: 残す
+  - binaryPath フィールド: 残す
+  - sessionId フィールド: 削除（自動追尾に変更）
+  - 「読み上げ ON/OFF」トグル追加
+- [ ] i18n キー調整（不要なフィールドラベル削除、トグルラベル追加）
+
+### 品質ゲート
+- [ ] dev build で読み上げ動作確認
+- [ ] typecheck + test pass
+- [ ] ターミナルで `claude` を実行 → 応答をキャラが読み上げる
+
+---
+
+## New-3: 統合テスト + 検証
+
+- [ ] 手動検証: ターミナルで claude → Airi キャラが読み上げ
+- [ ] 手動検証: claude がコードを書く → コードブロックは読み上げない
+- [ ] 手動検証: 読み上げ OFF → 沈黙
+- [ ] デバッグログ除去
+- [ ] PLAN.md 最終更新
+- [ ] コミット
+

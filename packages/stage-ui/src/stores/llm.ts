@@ -60,40 +60,7 @@ function streamOptionsToolsCompatibilityOk(model: string, chatProvider: ChatProv
   return options?.toolsCompatibility?.get(key) !== false
 }
 
-// NOTICE: Marker property exposed by a custom non-xsai chat provider
-//         (currently just the Claude Code CLI integration living in
-//         `apps/stage-tamagotchi/src/renderer/providers/claude-code/`).
-//         The stream dispatch below delegates to this method when it exists
-//         instead of running the xsai streamText pipeline, because the
-//         provider talks to a child process over Electron IPC rather than an
-//         HTTP chat completions endpoint. Kept as a duck-typed marker so
-//         stage-ui has no direct dependency on the Electron integration.
-const AIRI_CLAUDE_CODE_STREAM_METHOD = '__airi_claudeCodeStream' as const
-
-type ClaudeCodeStreamMethod = (messages: Message[], options?: StreamOptions) => Promise<void>
-
-interface ClaudeCodeChatProviderMarker {
-  [AIRI_CLAUDE_CODE_STREAM_METHOD]: ClaudeCodeStreamMethod
-}
-
-export function isClaudeCodeChatProvider(
-  chatProvider: ChatProvider,
-): chatProvider is ChatProvider & ClaudeCodeChatProviderMarker {
-  const candidate = (chatProvider as unknown as Partial<ClaudeCodeChatProviderMarker>)[AIRI_CLAUDE_CODE_STREAM_METHOD]
-  return typeof candidate === 'function'
-}
-
 async function streamFrom(model: string, chatProvider: ChatProvider, messages: Message[], sendSparkCommand: (command: WebSocketEvents['spark:command']) => void, options?: StreamOptions) {
-  // eslint-disable-next-line no-console
-  console.log('[llm] streamFrom called', { model, hasMarker: AIRI_CLAUDE_CODE_STREAM_METHOD in chatProvider, isClaudeCode: isClaudeCodeChatProvider(chatProvider) })
-
-  if (isClaudeCodeChatProvider(chatProvider)) {
-    // eslint-disable-next-line no-console
-    console.log('[llm] delegating to __airi_claudeCodeStream')
-    await chatProvider[AIRI_CLAUDE_CODE_STREAM_METHOD](messages, options)
-    return
-  }
-
   const chatConfig = chatProvider.chat(model)
   const sanitized = sanitizeMessages(messages as unknown[])
 
