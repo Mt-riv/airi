@@ -38,6 +38,7 @@ import StatusIsland from '../components/stage-islands/status-island/index.vue'
 
 import { electronOpenOnboarding } from '../../shared/eventa'
 import { modelSettingsRuntimeSnapshotChannelName } from '../../shared/model-settings-runtime'
+import { useClaudeCodeSpeech } from '../composables/use-claude-code-speech'
 import { useChatSyncStore } from '../stores/chat-sync'
 import { useControlsIslandStore } from '../stores/controls-island'
 import { useStageWindowLifecycleStore } from '../stores/stage-window-lifecycle'
@@ -220,6 +221,13 @@ const hearingPipeline = useHearingSpeechInputPipeline()
 const { transcribeForRecording, transcribeForMediaStream, stopStreamingTranscription } = hearingPipeline
 const { supportsStreamInput } = storeToRefs(hearingPipeline)
 const chatSyncStore = useChatSyncStore()
+
+// Claude Code speech readout: passively monitor JSONL session logs
+// and trigger the VRM character to read aloud assistant responses.
+// Controlled via localStorage keys 'claude-code-speech-enabled' and
+// 'claude-code-speech-project-dir'. Composable auto-attaches to the
+// latest session when both are set.
+useClaudeCodeSpeech()
 const shouldUseStreamInput = computed(() => supportsStreamInput.value && !!stream.value)
 
 const { init: initVAD, dispose: disposeVAD, start: startVAD, loaded: vadLoaded } = useVAD(workletUrl, {
