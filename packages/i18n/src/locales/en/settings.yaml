@@ -954,6 +954,12 @@ pages:
       vllm:
         description: vllm.ai
         title: vLLM
+      voicevox:
+        title: VOICEVOX
+        description: Free Japanese text-to-speech engine (local)
+      aivisspeech:
+        title: AivisSpeech
+        description: High-quality VOICEVOX-compatible Japanese TTS (local)
       volcengine:
         description: volcengine.com
         fields:

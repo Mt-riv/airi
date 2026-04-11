@@ -902,6 +902,12 @@ pages:
       vllm:
         description: vllm.ai
         title: vLLM
+      voicevox:
+        title: VOICEVOX
+        description: 免费的日语文本转语音引擎（本地）
+      aivisspeech:
+        title: AivisSpeech
+        description: 兼容 VOICEVOX 的高品质日语 TTS（本地）
       volcengine:
         description: volcengine.com
         fields:

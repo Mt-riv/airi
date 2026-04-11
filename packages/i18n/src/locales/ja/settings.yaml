@@ -907,6 +907,12 @@ pages:
       vllm:
         description: vllm.ai
         title: vLLM
+      voicevox:
+        title: VOICEVOX
+        description: 無料の日本語テキスト読み上げエンジン（ローカル）
+      aivisspeech:
+        title: AivisSpeech
+        description: VOICEVOX 互換の高品質日本語 TTS（ローカル）
       volcengine:
         description: volcengine.com
         fields:

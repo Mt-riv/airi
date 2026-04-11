@@ -843,3 +843,39 @@ Claude Code CLI → ~/.claude/projects/<slug>/<session>.jsonl
 - [ ] PLAN.md 最終更新
 - [ ] コミット
 
+
+---
+
+## VOICEVOX / AivisSpeech Speech Provider (2026-04-11)
+
+### 背景
+
+Airi の既存 Speech プロバイダは OpenAI 互換 TTS API を前提としている。
+VOICEVOX / AivisSpeech はローカル実行の日本語 TTS エンジンで、2 ステップ API（audio_query → synthesis）を持つ。
+custom `fetch` で OpenAI → VOICEVOX 変換を行い、既存の `generateSpeech` パイプラインに載せる。
+
+### 進捗
+
+| Phase | 概要 | 状態 | 備考 |
+|---|---|---|---|
+| VV-A | Provider 実装 + custom fetch | ✅ 完了 | VOICEVOX + AivisSpeech 両方登録 |
+| VV-B | i18n + バリデータ | ✅ 完了 | 3 locale + connectivity check |
+| VV-C | テスト + 検証 | ⬜ 未着手 | dev build で読み上げ確認 |
+
+### VV-A: Provider 実装
+
+**ファイル**:
+- [ ] `packages/stage-ui/src/stores/providers/voicevox/types.ts` — VOICEVOX API 型
+- [ ] `packages/stage-ui/src/stores/providers/voicevox/speech.ts` — custom fetch + createProvider
+- [ ] `packages/stage-ui/src/stores/providers/voicevox/index.ts` — providerMetadata 登録
+- [ ] `packages/stage-ui/src/stores/providers.ts` — voicevox provider を import
+
+### VV-B: i18n + バリデータ
+
+- [ ] en / ja / zh-Hans に `provider.voicevox.*` キー追加
+- [ ] 接続性バリデータ: GET /speakers が返るか
+
+### VV-C: テスト + 検証
+
+- [ ] dev build で AivisSpeech に接続して読み上げ確認
+- [ ] VOICEVOX エンジンでも動作確認（同一 API）

@@ -56,6 +56,7 @@ import { convertProviderDefinitionsToMetadata } from './providers/converters'
 import { models as elevenLabsModels } from './providers/elevenlabs/list-models'
 import { buildOpenAICompatibleProvider } from './providers/openai-compatible-builder'
 import { buildOpenRouterAudioSpeechProvider } from './providers/openrouter/audio-speech'
+import { aivisSpeechProvider, voicevoxProvider } from './providers/voicevox'
 import { createWebSpeechAPIProvider } from './providers/web-speech-api'
 
 const ALIYUN_NLS_REGIONS = [
@@ -260,6 +261,8 @@ export const useProvidersStore = defineStore('providers', () => {
   // Centralized provider metadata with provider factory functions
   const authState = useAuthStore()
   const providerMetadata: Record<string, ProviderMetadata> = {
+    'voicevox': voicevoxProvider,
+    'aivisspeech': aivisSpeechProvider,
     'speech-noop': {
       id: 'speech-noop',
       category: 'speech',
