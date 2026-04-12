@@ -2,10 +2,9 @@ import type { NormalizedClaudeCodeEvent } from '../../shared/claude-code'
 
 import { defineInvoke } from '@moeru/eventa'
 import { getElectronEventaContext } from '@proj-airi/electron-vueuse'
+import { useCharacterStore } from '@proj-airi/stage-ui/stores/character'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
-import { useAiriCardStore } from '@proj-airi/stage-ui/stores/modules'
 import { useSettingsClaudeCode } from '@proj-airi/stage-ui/stores/settings/claude-code'
-import { useSpeechRuntimeStore } from '@proj-airi/stage-ui/stores/speech-runtime'
 import { useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { ref, watch } from 'vue'
@@ -20,37 +19,23 @@ import {
   claudeCodeStreamEvent,
 } from '../../shared/eventa'
 
+// NOTICE: Claude Code TUI writes the SAME logical assistant message to the
+// on-disk JSONL multiple times — intermediate snapshots followed by the
+// final version. Each line gets a fresh envelope `uuid` but they share the
+// SAME `message.id` (e.g. `msg_…`). Without deduplication every snapshot
+// would be spoken AND appended to chat history, producing 4–7 repeats per
+// turn. We dedup by `messageId` and keep a small LRU set so the memory
+// footprint stays bounded across long sessions.
+//
+// See docs/integrations/claude-code-jsonl-schema.md §5 "Dedupe rule".
+const MAX_SEEN_MESSAGE_IDS = 100
+
 const CHAT_HISTORY_FLUSH_DELAY_MS = 1500
-
-// NOTICE: Claude Code JSONL transcript logs contain TWO representations of
-// the same assistant response:
-//   1. `stream_event` entries with `content_block_delta` — incremental text
-//      deltas emitted during streaming.
-//   2. A final `assistant` entry — the full message with all content blocks.
-//
-// Both are normalised to `assistant-text` events by `jsonl-to-stream-event.ts`.
-// Without deduplication the same text would be spoken and/or recorded twice.
-//
-// Strategy: track UUIDs that produced `assistant-text` from `stream_event`
-// deltas. When the final `assistant` entry arrives for the same UUID, skip it.
-// If no deltas were seen (e.g. the watcher attached after streaming finished),
-// the `assistant` entry is the only source and gets processed normally.
-const MAX_SEEN_UUIDS = 50
-
-// How long to wait after the last streaming delta before closing the speech
-// intent. This allows the TTS pipeline to chunk and synthesize accumulated
-// text while waiting for more deltas.
-const SPEECH_INTENT_IDLE_MS = 2000
 
 /**
  * Composable that watches Claude Code JSONL session logs and triggers
  * Airi's character to read aloud assistant responses via the existing
- * TTS pipeline.
- *
- * Uses a single streaming speech intent per response turn — text deltas
- * are written incrementally via `writeLiteral()` so the TTS pipeline can
- * chunk and synthesize in near real-time without creating a separate
- * intent per delta.
+ * TTS pipeline (`characterStore.emitTextOutput`).
  *
  * Optionally appends Claude Code assistant responses to the chat history
  * when the `showInChatHistory` setting is enabled.
@@ -70,61 +55,32 @@ export function useClaudeCodeSpeech() {
   const currentSessionId = ref<string | null>(null)
   const isAttached = ref(false)
 
-  const speechRuntimeStore = useSpeechRuntimeStore()
-  const { activeCard } = storeToRefs(useAiriCardStore())
+  const characterStore = useCharacterStore()
   const chatSessionStore = useChatSessionStore()
   const claudeCodeSettings = useSettingsClaudeCode()
   const { showInChatHistory } = storeToRefs(claudeCodeSettings)
 
-  // --- Deduplication state ---
-  const seenStreamingUuids = new Set<string>()
+  // --- Deduplication state (shared by speech + chat history) ---
+  const seenMessageIds = new Set<string>()
 
-  // --- Streaming speech intent state ---
-  // One intent is kept open per response turn (identified by UUID). Text
-  // deltas are written incrementally; an idle timer closes the intent once
-  // no new deltas arrive.
-  let activeSpeechIntent: ReturnType<typeof speechRuntimeStore.openIntent> | null = null
-  let activeSpeechUuid = ''
-  let speechIdleTimer: ReturnType<typeof setTimeout> | undefined
-
-  function closeSpeechIntent() {
-    if (speechIdleTimer !== undefined) {
-      clearTimeout(speechIdleTimer)
-      speechIdleTimer = undefined
+  function shouldSkipDuplicate(messageId: string | undefined): boolean {
+    if (!messageId)
+      return false
+    if (seenMessageIds.has(messageId))
+      return true
+    seenMessageIds.add(messageId)
+    if (seenMessageIds.size > MAX_SEEN_MESSAGE_IDS) {
+      const first = seenMessageIds.values().next().value
+      if (first !== undefined)
+        seenMessageIds.delete(first)
     }
-    if (activeSpeechIntent) {
-      activeSpeechIntent.writeFlush()
-      activeSpeechIntent.end()
-      activeSpeechIntent = null
-      activeSpeechUuid = ''
-    }
-  }
-
-  function resetSpeechIdleTimer() {
-    if (speechIdleTimer !== undefined)
-      clearTimeout(speechIdleTimer)
-    speechIdleTimer = setTimeout(closeSpeechIntent, SPEECH_INTENT_IDLE_MS)
-  }
-
-  function writeSpeechDelta(text: string, uuid: string) {
-    // If a different UUID arrives, close the previous intent first.
-    if (activeSpeechUuid && activeSpeechUuid !== uuid)
-      closeSpeechIntent()
-
-    if (!activeSpeechIntent) {
-      activeSpeechIntent = speechRuntimeStore.openIntent({
-        ownerId: activeCard.value?.name ?? 'default',
-        priority: 'normal',
-        behavior: 'queue',
-      })
-      activeSpeechUuid = uuid
-    }
-
-    activeSpeechIntent.writeLiteral(text)
-    resetSpeechIdleTimer()
+    return false
   }
 
   // --- Chat history buffering ---
+  // Multiple `assistant-text` events can fire in quick succession for one
+  // turn (one per text content block). Buffer briefly and flush as a single
+  // message so the chat history doesn't fragment.
   let chatHistoryBuffer = ''
   let chatHistoryFlushTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -158,16 +114,6 @@ export function useClaudeCodeSpeech() {
     chatHistoryFlushTimer = setTimeout(flushChatHistoryBuffer, CHAT_HISTORY_FLUSH_DELAY_MS)
   }
 
-  // --- UUID tracking ---
-  function trackSeenUuid(uuid: string) {
-    seenStreamingUuids.add(uuid)
-    if (seenStreamingUuids.size > MAX_SEEN_UUIDS) {
-      const first = seenStreamingUuids.values().next().value
-      if (first !== undefined)
-        seenStreamingUuids.delete(first)
-    }
-  }
-
   // --- Eventa IPC ---
   const context = getElectronEventaContext()
   const invokeListSessions = defineInvoke(context, claudeCodeListSessions)
@@ -192,38 +138,17 @@ export function useClaudeCodeSpeech() {
       if (event.kind !== 'assistant-text')
         return
 
-      // --- Deduplication ---
-      // Detect streaming delta vs final assistant entry via the `raw` field.
-      // Streaming deltas originate from `stream_event` → `content_block_delta`
-      // and carry a `delta` object. Final assistant entries carry a content
-      // block with `type: 'text'`.
-      const rawObj = event.raw as Record<string, unknown> | undefined
-      const isStreamingDelta = rawObj != null && 'delta' in rawObj
-
-      if (isStreamingDelta) {
-        if (event.uuid)
-          trackSeenUuid(event.uuid)
-      }
-      else {
-        // Full assistant entry — skip if we already processed deltas.
-        if (event.uuid && seenStreamingUuids.has(event.uuid))
-          return
-      }
+      // Dedup intermediate-snapshot duplicates from Claude Code TUI.
+      if (shouldSkipDuplicate(event.messageId))
+        return
 
       // --- Speech readout ---
       if (enabled.value) {
         const cleaned = cleanTextForSpeech(event.text)
         if (cleaned.length > 0) {
-          if (isStreamingDelta) {
-            // Write into a single streaming intent (one per response turn).
-            writeSpeechDelta(cleaned, event.uuid || '')
-          }
-          else {
-            // Full assistant entry (no prior deltas) — single emit.
-            closeSpeechIntent()
-            writeSpeechDelta(cleaned, event.uuid || '')
-            closeSpeechIntent()
-          }
+          characterStore.emitTextOutput(cleaned).catch(() => {
+            // Best-effort — swallow TTS errors so the watcher keeps running.
+          })
         }
       }
 

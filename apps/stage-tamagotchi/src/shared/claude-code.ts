@@ -12,11 +12,18 @@
  */
 export type NormalizedClaudeCodeEvent
   = | { kind: 'user-text', uuid: string, text: string, raw: unknown }
-    | { kind: 'assistant-text', uuid: string, text: string, raw: unknown }
-    | { kind: 'assistant-thinking', uuid: string, text: string, raw: unknown }
+    // NOTICE: `messageId` is the assistant `message.id` (e.g. `msg_…`) — NOT
+    // the JSONL envelope `uuid`. Claude Code TUI writes the same logical
+    // assistant response to the on-disk JSONL multiple times (intermediate
+    // snapshots + final), each with a fresh envelope `uuid` but the SAME
+    // `message.id`. Dedup MUST use `messageId` to avoid repeated readouts.
+    // See docs/integrations/claude-code-jsonl-schema.md §5 "Dedupe rule".
+    | { kind: 'assistant-text', uuid: string, messageId?: string, text: string, raw: unknown }
+    | { kind: 'assistant-thinking', uuid: string, messageId?: string, text: string, raw: unknown }
     | {
       kind: 'tool-call'
       uuid: string
+      messageId?: string
       toolCallId: string
       toolName: string
       args: unknown

@@ -107,6 +107,32 @@ describe('normalizeClaudeCodeLine', () => {
     })
   })
 
+  // Regression: Claude Code TUI snapshots a single logical assistant
+  // response into multiple JSONL lines that share the same `message.id` but
+  // get distinct envelope `uuid`s. The renderer dedupes by `messageId`, so
+  // the normalizer must propagate it on every assistant-derived event.
+  // See docs/integrations/claude-code-jsonl-schema.md §5 "Dedupe rule".
+  it('propagates assistant message.id as messageId on assistant events', () => {
+    const result = normalizeClaudeCodeLine(line({
+      type: 'assistant',
+      uuid: 'envelope-uuid-1',
+      message: {
+        id: 'msg_01ABCdedupKey',
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'pondering', signature: 'sig' },
+          { type: 'text', text: 'Hello there.' },
+          { type: 'tool_use', id: 'toolu_dedup', name: 'Bash', input: {} },
+        ],
+      },
+    }))
+
+    expect(result).toHaveLength(3)
+    expect(result[0]).toMatchObject({ kind: 'assistant-thinking', messageId: 'msg_01ABCdedupKey' })
+    expect(result[1]).toMatchObject({ kind: 'assistant-text', messageId: 'msg_01ABCdedupKey' })
+    expect(result[2]).toMatchObject({ kind: 'tool-call', messageId: 'msg_01ABCdedupKey' })
+  })
+
   it('emits assistant-thinking events for extended thinking blocks', () => {
     const result = normalizeClaudeCodeLine(line({
       type: 'assistant',

@@ -30,6 +30,7 @@ interface RawEvent {
 }
 
 interface RawMessage {
+  id?: unknown
   role?: unknown
   content?: unknown
 }
@@ -170,6 +171,12 @@ function normaliseAssistant(raw: RawEvent, uuid: string): NormalizedClaudeCodeEv
   if (!Array.isArray(content))
     return [{ kind: 'meta', uuid, type: 'assistant', raw }]
 
+  // NOTICE: Capture the assistant message id (e.g. `msg_…`) so downstream
+  // consumers can dedupe identical TUI snapshots that share a logical
+  // message but get written to multiple JSONL lines with distinct envelope
+  // uuids. See docs/integrations/claude-code-jsonl-schema.md §5.
+  const messageId = typeof message.id === 'string' ? message.id : undefined
+
   const events: NormalizedClaudeCodeEvent[] = []
   for (const block of content) {
     if (!block || typeof block !== 'object')
@@ -180,13 +187,13 @@ function normaliseAssistant(raw: RawEvent, uuid: string): NormalizedClaudeCodeEv
     if (blockType === 'text') {
       const textBlock = block as { text?: unknown }
       if (typeof textBlock.text === 'string') {
-        events.push({ kind: 'assistant-text', uuid, text: textBlock.text, raw: block })
+        events.push({ kind: 'assistant-text', uuid, messageId, text: textBlock.text, raw: block })
       }
     }
     else if (blockType === 'thinking') {
       const thinkingBlock = block as { thinking?: unknown }
       if (typeof thinkingBlock.thinking === 'string') {
-        events.push({ kind: 'assistant-thinking', uuid, text: thinkingBlock.thinking, raw: block })
+        events.push({ kind: 'assistant-thinking', uuid, messageId, text: thinkingBlock.thinking, raw: block })
       }
     }
     else if (blockType === 'tool_use') {
@@ -194,6 +201,7 @@ function normaliseAssistant(raw: RawEvent, uuid: string): NormalizedClaudeCodeEv
       events.push({
         kind: 'tool-call',
         uuid,
+        messageId,
         toolCallId: typeof toolUse.id === 'string' ? toolUse.id : '',
         toolName: typeof toolUse.name === 'string' ? toolUse.name : '',
         args: toolUse.input,
