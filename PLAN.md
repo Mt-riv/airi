@@ -38,6 +38,24 @@
 | New-2 | Speech Bridge + 設定簡素化 | ✅ 完了 | 2026-04-11 | composable + stage mount |
 | New-3 | 統合テスト + 検証 | ✅ 完了 | 2026-04-11 | 読み上げ動作確認済 |
 
+### チャットウィンドウ並行利用 (Chat-Parallel)
+
+| Phase | 概要 | 状態 | 完了日 | 備考 |
+|---|---|---|---|---|
+| CP-1 | Claude Code 応答をチャット履歴に表示（設定付き） | ✅ 完了 | 2026-04-12 | 設定ストア + i18n + UI + 書き込み実装 |
+| CP-2 | チャット入力の通常 LLM 送信を確実にする | ✅ 完了 | 2026-04-12 | エラーメッセージ改善 |
+| CP-3 | テスト + 検証 | ✅ 完了 | 2026-04-12 | 手動検証完了。重複読み上げ修正 + consciousness crashfix |
+
+### ローカル Whisper 音声認識 (Local-Whisper)
+
+| Phase | 概要 | 状態 | 完了日 | 備考 |
+|---|---|---|---|---|
+| LW-1 | Whisper プロバイダー実装 | ⬜ 未着手 | — | Worker 統合 + generateTranscription |
+| LW-2 | providers.ts 登録 + 可用性チェック修正 | ⬜ 未着手 | — | Electron 対応 |
+| LW-3 | 設定ページ UI | ⬜ 未着手 | — | モデルロード + 言語選択 + プログレス |
+| LW-4 | i18n | ⬜ 未着手 | — | en / ja |
+| LW-5 | テスト + 検証 | ⬜ 未着手 | — | |
+
 **状態凡例**: ⬜ 未着手 / 🟨 進行中 / ✅ 完了 / ❌ 撤回 / 🟥 ブロック
 
 ---
@@ -860,7 +878,7 @@ custom `fetch` で OpenAI → VOICEVOX 変換を行い、既存の `generateSpee
 |---|---|---|---|
 | VV-A | Provider 実装 + custom fetch | ✅ 完了 | VOICEVOX + AivisSpeech 両方登録 |
 | VV-B | i18n + バリデータ | ✅ 完了 | 3 locale + connectivity check |
-| VV-C | テスト + 検証 | ⬜ 未着手 | dev build で読み上げ確認 |
+| VV-C | テスト + 検証 | ✅ 完了 | AivisSpeech で動作確認済 |
 
 ### VV-A: Provider 実装
 
@@ -879,3 +897,392 @@ custom `fetch` で OpenAI → VOICEVOX 変換を行い、既存の `generateSpee
 
 - [ ] dev build で AivisSpeech に接続して読み上げ確認
 - [ ] VOICEVOX エンジンでも動作確認（同一 API）
+
+---
+
+## チャットウィンドウ並行利用 (Chat-Parallel)
+
+> **目的**: Claude Code 音声応答モード使用中でも、Airi のチャットウィンドウから通常のチャット（LLMプロバイダー経由）を使えるようにする。
+>
+> **背景**: 現状、Claude Code の音声応答は `characterStore.emitTextOutput()` 経由で TTS パイプラインに直接書き込まれ、チャット履歴には一切表示されない。チャットウィンドウの入力自体は有効だが、Claude Code の応答がチャットUIに反映されないため、ユーザーは2つのストリームを認識できない。
+>
+> **方針**:
+> - チャットウィンドウからの入力は通常の LLM プロバイダーに送信（Airi との会話用途）
+> - Claude Code 応答のチャット履歴表示は設定画面でオン/オフ切り替え可能
+> - 2つのストリームは独立して動作し、音声出力は既存のキュー制御で自然に序列化される
+>
+> **開始日**: 2026-04-11
+
+### アーキテクチャ（Chat-Parallel）
+
+```
+┌──────────── Airi Electron ───────────────────────────────┐
+│                                                           │
+│  ┌─ Chat Window (follower) ─┐  ┌─ Stage Window (auth) ─┐│
+│  │ InteractiveArea           │  │                        ││
+│  │  └→ chatSyncStore         │  │ useClaudeCodeSpeech    ││
+│  │      .requestIngest()     │  │  ├→ emitTextOutput()   ││
+│  │          │                │  │  │   (TTS pipeline)    ││
+│  │          │ BroadcastCh.   │  │  └→ appendToChat()     ││
+│  │          ▼                │  │      (設定ON時のみ)    ││
+│  └──────────┬────────────────┘  └────────┬───────────────┘│
+│             │                            │                │
+│             ▼                            ▼                │
+│  ┌─ chatOrchestrator ─┐     ┌─ chatSessionStore ─┐      │
+│  │ ingest() → LLM API │     │ appendSessionMessage│      │
+│  │ → stream response   │     │ (Claude Code応答)  │      │
+│  │ → speech pipeline   │     └────────────────────┘      │
+│  └─────────────────────┘                                  │
+│                                                           │
+│  ┌─ Speech Pipeline (共通) ──────────────────────────┐   │
+│  │ Intent queue (priority: normal, behavior: queue)   │   │
+│  │  ├─ Chat LLM 応答 intent                          │   │
+│  │  └─ Claude Code 応答 intent                        │   │
+│  │ → TTS → Playback → Lip Sync                       │   │
+│  └────────────────────────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────┘
+```
+
+### 進捗（Chat-Parallel）
+
+| Phase | 概要 | 状態 | 備考 |
+|---|---|---|---|
+| CP-1 | Claude Code 応答をチャット履歴に表示（設定付き） | ⬜ 未着手 | |
+| CP-2 | チャット入力の通常 LLM 送信を確実にする | ⬜ 未着手 | |
+| CP-3 | テスト + 検証 | ⬜ 未着手 | |
+
+### CP-1: Claude Code 応答をチャット履歴に表示（設定付き）
+
+**ゴール**: Claude Code の assistant-text イベントをチャット履歴に表示する。設定画面でオン/オフ切り替え可能。
+
+**現状分析**:
+- `useClaudeCodeSpeech` (composable) が `claudeCodeStreamEvent` を受信し `characterStore.emitTextOutput()` を呼ぶ
+- `emitTextOutput()` は TTS パイプラインに直接書き込むのみでチャットセッションには触れない
+- `chatSessionStore.appendSessionMessage()` で外部からチャット履歴にメッセージ追加可能
+- Claude Code 応答は断片的な `assistant-text` イベントとして届く（トークン単位ではなくテキストチャンク）
+
+**タスク**:
+
+#### CP-1a: 設定ストア追加
+- [ ] `packages/stage-ui/src/stores/settings/claude-code.ts` を新規作成
+  - `showInChatHistory`: `useLocalStorageManualReset<boolean>('settings/claude-code/show-in-chat-history', false)`
+  - `configured` computed: `showInChatHistory` が明示的に設定されたか
+  - `resetState()` メソッド
+- [ ] `packages/stage-ui/src/stores/settings/index.ts` に `useSettingsClaudeCode` をエクスポート
+
+#### CP-1b: i18n キー追加
+- [ ] `packages/i18n/src/locales/en/settings.yaml` に追加:
+  ```yaml
+  modules:
+    claude-code:
+      title: Claude Code
+      description: Claude Code integration settings for Airi.
+      fields:
+        show-in-chat-history:
+          title: Show in chat history
+          description: Display Claude Code assistant responses in the chat window history.
+  ```
+- [ ] `packages/i18n/src/locales/ja/settings.yaml` に追加:
+  ```yaml
+  modules:
+    claude-code:
+      title: Claude Code
+      description: Airi の Claude Code 統合設定。
+      fields:
+        show-in-chat-history:
+          title: チャット履歴に表示
+          description: Claude Code のアシスタント応答をチャットウィンドウの履歴に表示します。
+  ```
+
+#### CP-1c: 設定ページ UI 作成
+- [ ] `packages/stage-pages/src/pages/settings/modules/claude-code.vue` を新規作成
+  - `FieldCheckbox` で `showInChatHistory` トグル
+  - 既存の `claude-code-speech-enabled` / `claude-code-speech-project-dir` (localStorage) の表示も統合
+  - route meta: `layout: settings`, `titleKey`, `icon: i-simple-icons:anthropic`
+- [ ] `packages/stage-ui/src/composables/use-modules-list.ts` に Claude Code モジュール追加
+  - `id: 'claude-code'`, `category: 'essential'`
+  - `configured`: `useSettingsClaudeCode().configured` を参照
+
+#### CP-1d: チャット履歴への書き込み実装
+- [ ] `apps/stage-tamagotchi/src/renderer/composables/use-claude-code-speech.ts` を拡張:
+  - `useSettingsClaudeCode` から `showInChatHistory` を参照
+  - `useChatSessionStore` を import
+  - `assistant-text` イベント受信時、`showInChatHistory` が true なら:
+    - テキストチャンクをバッファリング（Claude Code は断片的にテキストを送る）
+    - 一定間隔（debounce）またはイベント終了時にチャット履歴に追加
+    - `role: 'assistant'`, `content: cleanedText`, `id: nanoid()`, `createdAt: Date.now()`
+  - assistant 応答の区切り検出: `assistant-text` イベントが一定時間来なくなったら1メッセージとしてまとめる
+- [ ] Claude Code 応答メッセージに視覚的な区別を付ける
+  - `ChatHistoryItem` に `source?: 'claude-code' | 'chat'` のようなメタデータを付加するか検討
+  - 最小限として: メッセージ先頭に `[Claude Code]` プレフィックスを付加
+
+### CP-2: チャット入力の通常 LLM 送信を確実にする
+
+**ゴール**: チャットウィンドウからのテキスト入力は常に通常の LLM プロバイダー（consciousness store で選択中のもの）に送信される。
+
+**現状分析**:
+- `InteractiveArea.vue` → `chatSyncStore.requestIngest()` → `executeIngest()` で `activeProvider` / `activeModel` を参照
+- プロバイダーが設定されていないとエラーになる
+- Claude Code モードとの相互排他ロジックは存在しない → 実は既に並行動作可能
+
+**タスク**:
+
+#### CP-2a: エラーハンドリング改善
+- [ ] `chatSyncStore.executeIngest()` のエラーメッセージを改善
+  - 現状: `'No active chat provider or model configured'`
+  - 改善: Claude Code 使用中であることを考慮した案内メッセージ
+  - 例: `'チャットプロバイダーが設定されていません。Settings > Modules > Consciousness からプロバイダーを設定してください。'`
+- [ ] `InteractiveArea.vue` にプロバイダー未設定時の視覚的フィードバック追加
+  - 送信ボタンまたはテキストエリアにプロバイダー未設定の案内を表示
+  - ただし入力自体は無効化しない
+
+#### CP-2b: 音声出力の競合制御確認
+- [ ] 2つのストリーム（通常チャット + Claude Code）が同時に音声出力する場合の動作確認
+  - 現状: 両方とも `priority: 'normal'`, `behavior: 'queue'` → キュー順で再生
+  - 検証: 実際に同時発話が発生した場合、キューが適切に処理されるか
+  - 問題があれば: Claude Code 応答の priority を調整
+
+### CP-3: テスト + 検証
+
+**タスク**:
+- [ ] `use-claude-code-speech.ts` のユニットテスト追加
+  - `showInChatHistory` が true の場合にチャットセッションにメッセージが追加されることを確認
+  - `showInChatHistory` が false の場合にはチャットセッションに影響しないことを確認
+  - テキストバッファリング/デバウンスの動作確認
+- [ ] `settings/claude-code.ts` ストアのテスト
+  - localStorage 永続化
+  - `resetState()` の動作
+- [ ] 統合テスト
+  - Claude Code 応答中にチャットウィンドウからメッセージ送信
+  - 両方の応答がチャット履歴に表示されることを確認
+  - 音声キューが正しく動作することを確認
+- [ ] dev build での手動検証
+  - Claude Code セッション接続中にチャットウィンドウから入力
+  - 設定画面での Claude Code チャット履歴表示のオン/オフ切り替え
+  - チャット履歴に Claude Code 応答が表示されること
+
+### ファイル変更サマリ（Chat-Parallel）
+
+| ファイル | 変更種別 | フェーズ |
+|---|---|---|
+| `packages/stage-ui/src/stores/settings/claude-code.ts` | **新規** | CP-1a |
+| `packages/stage-ui/src/stores/settings/index.ts` | 修正 | CP-1a |
+| `packages/i18n/src/locales/en/settings.yaml` | 修正 | CP-1b |
+| `packages/i18n/src/locales/ja/settings.yaml` | 修正 | CP-1b |
+| `packages/stage-pages/src/pages/settings/modules/claude-code.vue` | **新規** | CP-1c |
+| `packages/stage-ui/src/composables/use-modules-list.ts` | 修正 | CP-1c |
+| `apps/stage-tamagotchi/src/renderer/composables/use-claude-code-speech.ts` | 修正 | CP-1d |
+| `apps/stage-tamagotchi/src/renderer/stores/chat-sync.ts` | 修正 | CP-2a |
+| `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue` | 修正 | CP-2a |
+
+---
+
+## ローカル Whisper 音声認識 (Local-Whisper)
+
+> **目的**: Airi の聴覚モジュールでローカルの Whisper モデルを使った音声認識を利用可能にする。
+> APIキー不要で、プライバシーを保ちつつ高精度な文字起こしを実現する。
+>
+> **対象**: `apps/stage-tamagotchi` (Electron) + `apps/stage-web` (Web)
+>
+> **開始日**: 2026-04-12
+
+### 既存アセットの状態
+
+| アセット | ファイル | 状態 | 備考 |
+|---|---|---|---|
+| Whisper Worker | `packages/stage-ui/src/libs/workers/worker.ts` | ✅ 完成 | `whisper-large-v3-turbo`, WebGPU, Web Worker |
+| Worker 型定義 | `packages/stage-ui/src/libs/workers/types.ts` | ✅ 完成 | `MessageGenerate`, `MessageEvents` |
+| `useWhisper` composable | `packages/stage-ui/src/composables/whisper.ts` | ✅ 完成 | Worker メッセージング IF |
+| `browser-local-audio-transcription` | `packages/stage-ui/src/stores/providers.ts:388` | 🟨 登録のみ | OpenAI互換API向け。ローカルWorkerに未接続 |
+| `@huggingface/transformers` | `package.json` | ✅ v3.8.1 | ONNX + WebGPU 推論基盤 |
+
+### 制約事項
+
+1. **Whisper Worker は完全な録音データのみ対応**: base64 WAV を受け取り、テキストを返す。ストリーミング入力（リアルタイム逐次文字起こし）は **非対応**。
+2. **`isBrowserAndMemoryEnough` が Electron で false**: 既存の `browser-local-audio-transcription` は `isStageTamagotchi()` で除外される。Electron 用に可用性チェックを修正する必要がある。
+3. **WebGPU 必須**: Whisper Worker は `device: 'webgpu'` を要求。WebGPU 非対応環境ではフォールバックが必要（WASM など）。
+4. **初回ロードが重い**: モデルダウンロード + シェーダーコンパイルに時間がかかる。プログレス表示が必要。
+
+### アーキテクチャ（Local-Whisper）
+
+```
+┌─ Electron Renderer / Web Browser ──────────────────────────┐
+│                                                              │
+│  Hearing Module                                              │
+│   ├─ VAD: 音声検出 (process.worklet.ts)                     │
+│   ├─ AudioRecorder: 発話区間を録音                          │
+│   └─ transcribeForRecording(blob)                           │
+│        │                                                     │
+│        ▼                                                     │
+│  whisper-local Provider                                      │
+│   ├─ generateTranscription() ← hearing store 経由            │
+│   │    ├─ Blob → base64 WAV 変換                            │
+│   │    └─ Web Worker に送信                                  │
+│   │                                                          │
+│   └─ Whisper Web Worker (worker.ts)                          │
+│        ├─ @huggingface/transformers                          │
+│        ├─ WhisperForConditionalGeneration                    │
+│        ├─ WebGPU / WASM 推論                                │
+│        └─ テキスト出力 → main thread                        │
+│                                                              │
+│  フロー: マイク → VAD → 録音 → Blob → Provider → Worker    │
+│          → テキスト → hearing store → chat ingest            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**方式**: VAD ベースの「録音→文字起こし」方式（非ストリーミング）
+- VAD が発話開始を検出 → 録音開始
+- VAD が発話終了を検出 → 録音停止 → Blob を Provider に渡す
+- Provider が Worker にbase64 WAVを送信 → テキストを返す
+- これは既存の `transcribeForRecording()` パスに自然に乗る
+
+### 進捗（Local-Whisper）
+
+| Phase | 概要 | 状態 | 備考 |
+|---|---|---|---|
+| LW-1 | Whisper プロバイダー実装 | ⬜ 未着手 | Worker 統合 + generateTranscription |
+| LW-2 | providers.ts 登録 + 可用性チェック修正 | ⬜ 未着手 | Electron 対応 |
+| LW-3 | 設定ページ UI | ⬜ 未着手 | モデルロード + 言語選択 + プログレス表示 |
+| LW-4 | i18n | ⬜ 未着手 | en / ja |
+| LW-5 | テスト + 検証 | ⬜ 未着手 | |
+
+### LW-1: Whisper プロバイダー実装
+
+**ゴール**: `useWhisper` composable と Whisper Worker を聴覚モジュールの transcription プロバイダーとして接続する。
+
+**タスク**:
+
+#### LW-1a: Provider ファクトリ作成
+- [ ] `packages/stage-ui/src/stores/providers/whisper-local/index.ts` を新規作成
+  - `createWhisperLocalProvider()` ファクトリ関数
+  - `generateTranscription` 互換の custom fetch アダプター:
+    1. 入力: `File` / `Blob` (WAV / WebM / PCM)
+    2. 音声データを base64 エンコード（Worker が要求する形式）
+    3. `useWhisper` の `transcribe({ type: 'generate', data: { audio, language } })` を呼び出し
+    4. Worker の `complete` イベントを待って結果テキストを返す
+  - `transcriptionFeatures`:
+    - `supportsGenerate: true` (ファイルベース文字起こし)
+    - `supportsStreamOutput: false` (Worker がストリーミング出力に非対応)
+    - `supportsStreamInput: false` (Worker がストリーミング入力に非対応)
+
+#### LW-1b: Worker ライフサイクル管理
+- [ ] `packages/stage-ui/src/stores/providers/whisper-local/worker-manager.ts` を新規作成
+  - Worker のシングルトン管理（ロード済み状態の追跡）
+  - `load()` / `transcribe()` / `terminate()` メソッド
+  - モデルロード中のプログレスイベント転送
+  - Worker URL の解決（Vite の `?worker&url` パターン）
+- [ ] Worker に渡す音声フォーマット変換ユーティリティ:
+  - `Blob` → `ArrayBuffer` → base64 WAV 変換
+  - サンプルレート変換（必要な場合、hearing は 16kHz で録音するので一致するはず）
+
+### LW-2: providers.ts 登録 + 可用性チェック修正
+
+**ゴール**: Whisper ローカルプロバイダーを providers store に登録し、Electron でも利用可能にする。
+
+**タスク**:
+
+#### LW-2a: 可用性チェック関数の作成
+- [ ] `providers.ts` に `isWebGPUAvailable()` ヘルパーを追加（または既存の `isWebGPUSupported` を流用）
+  - Electron renderer でも WebGPU が使えるか正しく判定
+  - `isStageTamagotchi()` で一律除外しない
+  - フォールバック: WebGPU 非対応なら WASM 利用を検討（将来課題）
+- [ ] 既存の `browser-local-audio-transcription` の `isAvailableBy` を修正するか、新しいプロバイダーIDで登録するか判断
+  - 推奨: 新規 `whisper-local` プロバイダーとして登録（既存プロバイダーとの干渉を避ける）
+
+#### LW-2b: providerMetadata 登録
+- [ ] `packages/stage-ui/src/stores/providers.ts` に `whisper-local` メタデータ追加:
+  ```typescript
+  'whisper-local': {
+    id: 'whisper-local',
+    category: 'transcription',
+    tasks: ['speech-to-text', 'asr', 'stt'],
+    name: 'Whisper (Local)',
+    icon: 'i-lobe-icons:huggingface',
+    transcriptionFeatures: {
+      supportsGenerate: true,
+      supportsStreamOutput: false,
+      supportsStreamInput: false,
+    },
+    isAvailableBy: isWebGPUAvailable,
+    createProvider: (config) => createWhisperLocalProvider(config),
+    capabilities: {
+      listModels: () => [{
+        id: 'whisper-large-v3-turbo',
+        name: 'Whisper Large V3 Turbo',
+        description: 'onnx-community/whisper-large-v3-turbo (WebGPU)',
+      }],
+    },
+    validators: { ... },
+  }
+  ```
+
+### LW-3: 設定ページ UI
+
+**ゴール**: Whisper ローカルプロバイダー用の設定画面を作成する。
+
+**タスク**:
+- [ ] `packages/stage-pages/src/pages/settings/providers/transcription/whisper-local.vue` を新規作成
+  - **モデルロードセクション**:
+    - 「モデルをロード」ボタン（初回: ダウンロード + コンパイル、2回目以降: キャッシュから復元）
+    - ロード中のプログレスバー（ファイルダウンロード進捗）
+    - ロード完了後のステータス表示（ready / not loaded）
+    - メモリ / WebGPU 可用性の警告表示
+  - **言語選択**:
+    - 文字起こし言語の FieldCombobox (`ja`, `en`, `zh`, etc.)
+    - デフォルト: `ja` (ユーザーの UI 言語に連動)
+  - **テスト録音セクション**:
+    - 「テスト録音」ボタン → マイク入力 → 文字起こし結果表示
+    - TPS (tokens per second) メーター表示
+
+### LW-4: i18n
+
+**タスク**:
+- [ ] `packages/i18n/src/locales/en/settings.yaml` に追加:
+  ```yaml
+  provider:
+    whisper-local:
+      title: Whisper (Local)
+      description: Run Whisper speech recognition locally using WebGPU. No API key required.
+  ```
+  modules セクションにも聴覚関連で必要なキーを追加
+- [ ] `packages/i18n/src/locales/ja/settings.yaml` に追加:
+  ```yaml
+  provider:
+    whisper-local:
+      title: Whisper（ローカル）
+      description: WebGPU を使ってローカルで Whisper 音声認識を実行します。APIキー不要。
+  ```
+
+### LW-5: テスト + 検証
+
+**タスク**:
+- [ ] `worker-manager.ts` のユニットテスト
+  - Worker メッセージングのモック
+  - base64 変換のテスト
+- [ ] `whisper-local/index.ts` プロバイダーのユニットテスト
+  - `generateTranscription` 互換性
+  - エラーハンドリング
+- [ ] 統合テスト（dev build）
+  - Electron でプロバイダーが表示されること
+  - モデルのロード → プログレス表示
+  - マイク入力 → VAD 検出 → 録音 → Whisper 文字起こし → テキスト表示
+  - 日本語 / 英語の認識精度確認
+- [ ] WebGPU 非対応環境での graceful degradation 確認
+
+### ファイル変更サマリ（Local-Whisper）
+
+| ファイル | 変更種別 | フェーズ |
+|---|---|---|
+| `packages/stage-ui/src/stores/providers/whisper-local/index.ts` | **新規** | LW-1a |
+| `packages/stage-ui/src/stores/providers/whisper-local/worker-manager.ts` | **新規** | LW-1b |
+| `packages/stage-ui/src/stores/providers.ts` | 修正 | LW-2 |
+| `packages/stage-pages/src/pages/settings/providers/transcription/whisper-local.vue` | **新規** | LW-3 |
+| `packages/i18n/src/locales/en/settings.yaml` | 修正 | LW-4 |
+| `packages/i18n/src/locales/ja/settings.yaml` | 修正 | LW-4 |
+
+### 将来の拡張（スコープ外）
+
+- **ストリーミング文字起こし**: Worker を逐次入力対応に拡張（VAD + chunked transcription）
+- **モデル選択**: `whisper-small`, `whisper-medium` など軽量モデルの選択肢追加
+- **WASM フォールバック**: WebGPU 非対応環境での WASM バックエンド
+- **モデルキャッシュ管理**: ダウンロード済みモデルの削除 / サイズ表示

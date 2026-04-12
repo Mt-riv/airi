@@ -199,7 +199,11 @@ export const useChatSyncStore = defineStore('stage-tamagotchi:chat-sync', () => 
     const providerId = activeProvider.value
     const modelId = activeModel.value
     if (!providerId || !modelId) {
-      throw new Error('No active chat provider or model configured')
+      throw new Error(
+        !providerId
+          ? 'No chat provider configured. Go to Settings > Modules > Consciousness to select a provider.'
+          : 'No chat model selected. Go to Settings > Modules > Consciousness to select a model.',
+      )
     }
 
     const chatProvider = await providersStore.getProviderInstance<ChatProvider>(providerId)

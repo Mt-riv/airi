@@ -15,8 +15,18 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
   const expandedDescriptions = refManualReset<Record<string, boolean>>(() => ({}))
   const modelSearchQuery = refManualReset<string>('')
 
+  // NOTICE: activeProvider may reference a provider that no longer exists
+  // (e.g. 'claude-code' was removed in New-1 phase but the value persists
+  // in localStorage). Guard all metadata lookups to avoid a throw from
+  // getProviderMetadata when the ID is stale.
+  function hasProviderMetadata(providerId: string): boolean {
+    return !!providerId && providerId in providersStore.providerMetadata
+  }
+
   // Computed properties
   const supportsModelListing = computed(() => {
+    if (!hasProviderMetadata(activeProvider.value))
+      return false
     return providersStore.getProviderMetadata(activeProvider.value)?.capabilities.listModels !== undefined
   })
 
@@ -53,13 +63,13 @@ export const useConsciousnessStore = defineStore('consciousness', () => {
   }
 
   async function loadModelsForProvider(provider: string) {
-    if (provider && providersStore.getProviderMetadata(provider)?.capabilities.listModels !== undefined) {
+    if (provider && hasProviderMetadata(provider) && providersStore.getProviderMetadata(provider)?.capabilities.listModels !== undefined) {
       await providersStore.fetchModelsForProvider(provider)
     }
   }
 
   async function getModelsForProvider(provider: string) {
-    if (provider && providersStore.getProviderMetadata(provider)?.capabilities.listModels !== undefined) {
+    if (provider && hasProviderMetadata(provider) && providersStore.getProviderMetadata(provider)?.capabilities.listModels !== undefined) {
       return providersStore.getModelsForProvider(provider)
     }
 

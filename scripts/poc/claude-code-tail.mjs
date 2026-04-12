@@ -11,10 +11,11 @@
 //
 // Designed to be discarded once Phase 1 ships the TypeScript session-watcher.
 
-import { promises as fs, watch } from 'node:fs'
-import { homedir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+
+import { promises as fs, watch } from 'node:fs'
+import { homedir } from 'node:os'
 
 // NOTICE: slug convention verified in Phase 0 — realpath first, then replace
 //         `/`, `_`, and `.` with `-`. Examples:

@@ -535,6 +535,20 @@ pages:
       access-token-secret-description: Your X / Twitter access token secret
       access-token-secret-placeholder: Enter your X / Twitter access token secret
       configured: X / Twitter is properly configured!
+    claude-code:
+      description: Show Claude Code responses in chat and configure integration
+      title: Claude Code
+      fields:
+        show-in-chat-history:
+          title: Show in chat history
+          description: Display Claude Code assistant responses in the chat window history.
+        speech-enabled:
+          title: Speech readout
+          description: Let Airi read aloud Claude Code assistant responses via the TTS pipeline.
+        project-dir:
+          title: Project directory
+          description: Working directory for Claude Code session monitoring.
+          placeholder: /Users/you/your-project
     mcp-server:
       description: Connect and manage MCP server and tools
       title: MCP Server

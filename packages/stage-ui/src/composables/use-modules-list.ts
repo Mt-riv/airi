@@ -14,6 +14,7 @@ import { useHearingStore } from '../stores/modules/hearing'
 import { useSpeechStore } from '../stores/modules/speech'
 import { useTwitterStore } from '../stores/modules/twitter'
 import { useVisionStore } from '../stores/modules/vision'
+import { useSettingsClaudeCode } from '../stores/settings/claude-code'
 
 export interface Module {
   id: string
@@ -39,6 +40,7 @@ export function useModulesList() {
   const twitterStore = useTwitterStore()
   const minecraftStore = useMinecraftStore()
   const factorioStore = useFactorioStore()
+  const claudeCodeSettings = useSettingsClaudeCode()
   const beatSyncState = ref<BeatSyncDetectorState>()
 
   minecraftStore.initialize()
@@ -141,6 +143,15 @@ export function useModulesList() {
       icon: 'i-solar:server-bold-duotone',
       to: '/settings/modules/mcp',
       configured: false,
+      category: 'essential',
+    },
+    {
+      id: 'claude-code',
+      name: t('settings.pages.modules.claude-code.title'),
+      description: t('settings.pages.modules.claude-code.description'),
+      icon: 'i-simple-icons:anthropic',
+      to: '/settings/modules/claude-code',
+      configured: claudeCodeSettings.configured,
       category: 'essential',
     },
     {

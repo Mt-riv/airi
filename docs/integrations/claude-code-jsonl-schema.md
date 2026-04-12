@@ -81,19 +81,19 @@ events are added at the tail.
 ```ts
 interface TranscriptEnvelope {
   type: TranscriptEventType
-  uuid: string                    // UUIDv4, unique per event
-  parentUuid: string | null       // previous event in the causal chain
-  sessionId: string               // matches the filename; stable for the file
-  timestamp: string               // ISO-8601 UTC
-  cwd: string                     // realpath
-  version: string                 // Claude Code version, e.g. "2.1.96"
-  gitBranch?: string              // optional
+  uuid: string // UUIDv4, unique per event
+  parentUuid: string | null // previous event in the causal chain
+  sessionId: string // matches the filename; stable for the file
+  timestamp: string // ISO-8601 UTC
+  cwd: string // realpath
+  version: string // Claude Code version, e.g. "2.1.96"
+  gitBranch?: string // optional
   entrypoint?: 'cli' | string
   userType?: 'external' | string
-  isSidechain?: boolean           // true inside spawned sub-agents
-  isMeta?: boolean                // true for synthetic/command events
-  promptId?: string               // shared across events from one user turn
-  requestId?: string              // Anthropic req_* id (assistant only)
+  isSidechain?: boolean // true inside spawned sub-agents
+  isMeta?: boolean // true for synthetic/command events
+  promptId?: string // shared across events from one user turn
+  requestId?: string // Anthropic req_* id (assistant only)
   permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
 }
 ```
@@ -195,10 +195,10 @@ UUID. No event observed mid-file that rewrites it; resuming preserves it.
 **Content block shapes**:
 
 ```ts
-type AssistantContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'thinking'; thinking: string; signature: string }
-  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown>; caller?: unknown }
+type AssistantContentBlock
+  = | { type: 'text', text: string }
+    | { type: 'thinking', thinking: string, signature: string }
+    | { type: 'tool_use', id: string, name: string, input: Record<string, unknown>, caller?: unknown }
 ```
 
 **Tool-call linkage**: an assistant `tool_use` block with `id = toolu_X` is
@@ -314,13 +314,13 @@ Airi can map `text_delta` → `StreamEvent.text-delta`, and accumulate
 
 ```ts
 // packages/stage-ui/src/stores/llm.ts:18-24
-type StreamEvent =
-  | { type: 'text-delta'; text: string }
-  | { type: 'tool-call'; toolCallId: string; toolName: string; args: unknown }
-  | { type: 'tool-result'; toolCallId: string; result: unknown }
-  | { type: 'tool-error'; toolCallId: string; error: string }
-  | { type: 'finish'; reason: string }
-  | { type: 'error'; error: string }
+type StreamEvent
+  = | { type: 'text-delta', text: string }
+    | { type: 'tool-call', toolCallId: string, toolName: string, args: unknown }
+    | { type: 'tool-result', toolCallId: string, result: unknown }
+    | { type: 'tool-error', toolCallId: string, error: string }
+    | { type: 'finish', reason: string }
+    | { type: 'error', error: string }
 ```
 
 ### Transcript → StreamEvent

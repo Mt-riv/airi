@@ -172,6 +172,11 @@ async function playFunction(item: Parameters<Parameters<typeof createPlaybackMan
     }
   }
 
+  // Ensure lip-sync is initialized before playback regardless of audio source
+  // (chat messages, Claude Code speech, etc.)
+  setupAnalyser()
+  await setupLipSync()
+
   const source = audioContext.createBufferSource()
   currentAudioSource.value = source
   source.buffer = item.audio

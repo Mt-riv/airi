@@ -506,6 +506,20 @@ pages:
       access-token-secret-description: あなたのX / Twitterアクセストークンシークレット
       access-token-secret-placeholder: あなたのX / Twitterアクセストークンシークレットを入力
       configured: X / Twitterは適切に設定されています！
+    claude-code:
+      description: Claude Code の応答をチャットに表示し、統合設定を行います
+      title: Claude Code
+      fields:
+        show-in-chat-history:
+          title: チャット履歴に表示
+          description: Claude Code のアシスタント応答をチャットウィンドウの履歴に表示します。
+        speech-enabled:
+          title: 音声読み上げ
+          description: Airi が Claude Code のアシスタント応答を TTS パイプラインで読み上げます。
+        project-dir:
+          title: プロジェクトディレクトリ
+          description: Claude Code セッション監視の対象ディレクトリ。
+          placeholder: /Users/you/your-project
     mcp-server:
       description: MCPサーバーとツールの接続と管理
       title: MCPサーバー
