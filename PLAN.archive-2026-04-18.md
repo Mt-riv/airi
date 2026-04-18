@@ -149,11 +149,11 @@
 **検証した環境**
 - Claude Code バイナリ: `/opt/homebrew/bin/claude` (v2.1.96)
 - ホスト OS: macOS (darwin 25.3.0)
-- 既存プロジェクト slug 7 件（`-Users-y-yamakawa-development-airi` を含む）
+- 既存プロジェクト slug 7 件（`-Users-<your-username>-development-airi` を含む）
 
 **主要な発見事項**
 1. **Project slug は `/` / `_` / `.` を全て `-` に変換する歪曲写像**（lossy）。
-   - `/Users/y_yamakawa/development/airi` → `-Users-y-yamakawa-development-airi`
+   - `/Users/<your-username>/development/airi` → `-Users-<your-username>-development-airi`
    - `/private/tmp/airi_slug_test/a.b_c/d.e` → `-private-tmp-airi-slug-test-a-b-c-d-e`
    - `/tmp` は symlink → `/private/tmp` → `-private-tmp`（**realpath 解決が必須**）
    - 元来のディレクトリ名は復元不能。Airi は slug を「ディレクトリの位置特定」にのみ使い、`sessionId` を canonical ID として扱う。
