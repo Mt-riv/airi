@@ -337,6 +337,7 @@ catalogs:
       version: 0.1.11
 
 overrides:
+  '@eslint/plugin-kit': ^0.6.1
   array-flatten: npm:@nolyfill/array-flatten@^1.0.44
   axios: npm:feaxios@^0.0.23
   is-core-module: npm:@nolyfill/is-core-module@^1.0.39
@@ -1138,12 +1139,18 @@ importers:
       '@moeru/std':
         specifier: 'catalog:'
         version: 0.1.0-beta.17
+      '@proj-airi/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
       '@proj-airi/audio':
         specifier: workspace:^
         version: link:../../packages/audio
       '@proj-airi/ccc':
         specifier: workspace:^
         version: link:../../packages/ccc
+      '@proj-airi/cron-runtime':
+        specifier: workspace:*
+        version: link:../../packages/cron-runtime
       '@proj-airi/drizzle-duckdb-wasm':
         specifier: 'catalog:'
         version: 0.4.29(drizzle-orm@0.45.1(@electric-sql/pglite@0.4.1)(@opentelemetry/api@1.9.1)(@prisma/client@5.22.0)(@types/pg@8.20.0)(better-sqlite3@12.5.0)(kysely@0.28.14)(pg@8.20.0)(postgres@3.4.8))
@@ -1162,6 +1169,9 @@ importers:
       '@proj-airi/server-sdk':
         specifier: workspace:*
         version: link:../../packages/server-sdk
+      '@proj-airi/skill-registry':
+        specifier: workspace:*
+        version: link:../../packages/skill-registry
       '@proj-airi/stage-layouts':
         specifier: workspace:^
         version: link:../../packages/stage-layouts
@@ -2316,6 +2326,19 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0
 
+  packages/agent-runtime:
+    dependencies:
+      '@moeru/std':
+        specifier: 'catalog:'
+        version: 0.1.0-beta.17
+      valibot:
+        specifier: 'catalog:'
+        version: 1.2.0(typescript@5.9.3)
+    devDependencies:
+      vitest:
+        specifier: catalog:vitest
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@24.12.0)(@vitest/browser-playwright@4.1.1)(jsdom@27.4.0(bufferutil@4.1.0)(canvas@3.2.2)(utf-8-validate@5.0.10))(vite@8.0.2(@types/node@24.12.0)(esbuild@0.27.2)(jiti@2.6.1)(less@4.6.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
+
   packages/audio:
     dependencies:
       '@alexanderolsen/libsamplerate-js':
@@ -2380,6 +2403,22 @@ importers:
       clustr:
         specifier: ^1.0.2
         version: 1.0.2
+
+  packages/cron-runtime:
+    dependencies:
+      '@moeru/std':
+        specifier: 'catalog:'
+        version: 0.1.0-beta.17
+      cron-parser:
+        specifier: ^5.0.0
+        version: 5.5.0
+      valibot:
+        specifier: 'catalog:'
+        version: 1.2.0(typescript@5.9.3)
+    devDependencies:
+      vitest:
+        specifier: catalog:vitest
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@24.12.0)(@vitest/browser-playwright@4.1.1)(jsdom@27.4.0(bufferutil@4.1.0)(canvas@3.2.2)(utf-8-validate@5.0.10))(vite@8.0.2(@types/node@24.12.0)(esbuild@0.27.2)(jiti@2.6.1)(less@4.6.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/electron-eventa:
     dependencies:
@@ -2673,6 +2712,28 @@ importers:
         specifier: workspace:*
         version: link:../plugin-protocol
 
+  packages/skill-registry:
+    dependencies:
+      '@moeru/std':
+        specifier: 'catalog:'
+        version: 0.1.0-beta.17
+      gray-matter:
+        specifier: ^4.0.3
+        version: 4.0.3
+      micromatch:
+        specifier: ^4.0.8
+        version: 4.0.8
+      valibot:
+        specifier: 'catalog:'
+        version: 1.2.0(typescript@5.9.3)
+    devDependencies:
+      '@types/micromatch':
+        specifier: ^4.0.9
+        version: 4.0.10
+      vitest:
+        specifier: catalog:vitest
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@24.12.0)(@vitest/browser-playwright@4.1.1)(jsdom@27.4.0(bufferutil@4.1.0)(canvas@3.2.2)(utf-8-validate@5.0.10))(vite@8.0.2(@types/node@24.12.0)(esbuild@0.27.2)(jiti@2.6.1)(less@4.6.4)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
+
   packages/stage-layouts:
     dependencies:
       '@moeru/eventa':
@@ -2945,6 +3006,12 @@ importers:
       '@moeru/eventa':
         specifier: 'catalog:'
         version: 1.0.0-beta.3(electron@41.0.3)
+      '@moeru/std':
+        specifier: 'catalog:'
+        version: 0.1.0-beta.17
+      '@proj-airi/agent-runtime':
+        specifier: workspace:^
+        version: link:../agent-runtime
       '@proj-airi/audio':
         specifier: workspace:^
         version: link:../audio
@@ -2960,6 +3027,9 @@ importers:
       '@proj-airi/drizzle-duckdb-wasm':
         specifier: 'catalog:'
         version: 0.4.29(drizzle-orm@0.45.1(@electric-sql/pglite@0.4.1)(@opentelemetry/api@1.9.1)(@prisma/client@5.22.0)(@types/pg@8.20.0)(better-sqlite3@12.5.0)(kysely@0.28.14)(pg@8.20.0)(postgres@3.4.8))
+      '@proj-airi/electron-vueuse':
+        specifier: workspace:^
+        version: link:../electron-vueuse
       '@proj-airi/font-chillroundm':
         specifier: workspace:^
         version: link:../font-chillroundm
@@ -3246,9 +3316,6 @@ importers:
       '@iconify-json/vscode-icons':
         specifier: ^1.2.45
         version: 1.2.45
-      '@moeru/std':
-        specifier: 'catalog:'
-        version: 0.1.0-beta.17
       '@pinia/testing':
         specifier: 'catalog:'
         version: 1.0.3(pinia@3.0.4(typescript@5.9.3)(vue@3.5.30(typescript@5.9.3)))
@@ -5740,10 +5807,6 @@ packages:
   '@eslint/object-schema@3.0.3':
     resolution: {integrity: sha512-iM869Pugn9Nsxbh/YHRqYiqd23AmIbxJOcpUMOuWCVNdoQJ5ZtwL6h3t0bcZzJUlC3Dq9jCFCESBZnX0GTv7iQ==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
-
-  '@eslint/plugin-kit@0.4.1':
-    resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
-    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
   '@eslint/plugin-kit@0.6.1':
     resolution: {integrity: sha512-iH1B076HoAshH1mLpHMgwdGeTs0CYwL0SPMkGuSebZrwBp16v415e9NZXg2jtrqPVQjf6IANe2Vtlr5KswtcZQ==}
@@ -9264,6 +9327,9 @@ packages:
   '@types/aws-lambda@8.10.159':
     resolution: {integrity: sha512-SAP22WSGNN12OQ8PlCzGzRCZ7QDCwI85dQZbmpz7+mAk+L7j+wI7qnvmdKh+o7A5LaOp6QnOZ2NJphAZQTTHQg==}
 
+  '@types/braces@3.0.5':
+    resolution: {integrity: sha512-SQFof9H+LXeWNz8wDe7oN5zu7ket0qwMu5vZubW4GCJ8Kkeh6nBWUz87+KTz/G3Kqsrp0j/W253XJb3KMEeg3w==}
+
   '@types/bunyan@1.8.11':
     resolution: {integrity: sha512-758fRH7umIMk5qt5ELmRMff4mLDlN+xyYzC+dkPTdKwbSkJFvz6xwyScrytPU0QIBbRRwbiE8/BIg8bpajerNQ==}
 
@@ -9464,6 +9530,9 @@ packages:
 
   '@types/memcached@2.2.10':
     resolution: {integrity: sha512-AM9smvZN55Gzs2wRrqeMHVP7KE8KWgCJO/XL5yCly2xF6EKa4YlbpK+cLSAH4NG/Ah64HrlegmGqW8kYws7Vxg==}
+
+  '@types/micromatch@4.0.10':
+    resolution: {integrity: sha512-5jOhFDElqr4DKTrTEbnW8DZ4Hz5LRUEmyrGpCMrD/NphYv3nUnaF08xmSLx1rGGnyEs/kFnhiw6dCgcDqMr5PQ==}
 
   '@types/minimatch@3.0.5':
     resolution: {integrity: sha512-Klz949h02Gz2uZCMGwDUSDS1YBlTdDDgbWHi+81l29tQALUtvz4rAYi5uoVhE5Lagoq6DeqAUlbrHvW/mXDgdQ==}
@@ -11432,6 +11501,10 @@ packages:
 
   crelt@1.0.6:
     resolution: {integrity: sha512-VQ2MBenTq1fWZUH9DJNGti7kKv6EeAuYr3cLwxUWhIu1baTaXh4Ib5W2CqHVqib4/MqbYGJqiL3Zb8GJZr3l4g==}
+
+  cron-parser@5.5.0:
+    resolution: {integrity: sha512-oML4lKUXxizYswqmxuOCpgFS8BNUJpIu6k/2HVHyaL8Ynnf3wdf9tkns0yRdJLSIjkJ+b0DXHMZEHGpMwjnPww==}
+    engines: {node: '>=18'}
 
   cross-dirname@0.1.0:
     resolution: {integrity: sha512-+R08/oI0nl3vfPcqftZRpytksBXDzOUveBq/NBVx0sUp1axwzPQrKinNx5yd5sxPu8j1wIy8AfnVQ+5eFdha6Q==}
@@ -14137,6 +14210,10 @@ packages:
   lru-cache@6.0.0:
     resolution: {integrity: sha512-Jo6dJ04CmSjuznwJSS3pUeWmd/H0ffTlkXXgwZi+eq1UCmqQwCh+eLsYOYCwY991i2Fah4h1BEMCx4qThGbsiA==}
     engines: {node: '>=10'}
+
+  luxon@3.7.2:
+    resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
+    engines: {node: '>=12'}
 
   macaddress@0.5.4:
     resolution: {integrity: sha512-i8xVWoUjj2woYU8kbpQby86Kq7uF7xl2brtKREXUBWpfgqx1fKXEeYzDiVMVxA/IufC1d3xxwJRHtFCX+9IspA==}
@@ -19749,7 +19826,7 @@ snapshots:
   '@eslint/markdown@7.5.1':
     dependencies:
       '@eslint/core': 0.17.0
-      '@eslint/plugin-kit': 0.4.1
+      '@eslint/plugin-kit': 0.6.1
       github-slugger: 2.0.0
       mdast-util-from-markdown: 2.0.2
       mdast-util-frontmatter: 2.0.1
@@ -19761,11 +19838,6 @@ snapshots:
       - supports-color
 
   '@eslint/object-schema@3.0.3': {}
-
-  '@eslint/plugin-kit@0.4.1':
-    dependencies:
-      '@eslint/core': 0.17.0
-      levn: 0.4.1
 
   '@eslint/plugin-kit@0.6.1':
     dependencies:
@@ -23130,6 +23202,8 @@ snapshots:
 
   '@types/aws-lambda@8.10.159': {}
 
+  '@types/braces@3.0.5': {}
+
   '@types/bunyan@1.8.11':
     dependencies:
       '@types/node': 24.12.0
@@ -23358,6 +23432,10 @@ snapshots:
   '@types/memcached@2.2.10':
     dependencies:
       '@types/node': 24.12.0
+
+  '@types/micromatch@4.0.10':
+    dependencies:
+      '@types/braces': 3.0.5
 
   '@types/minimatch@3.0.5': {}
 
@@ -25831,6 +25909,10 @@ snapshots:
     optional: true
 
   crelt@1.0.6: {}
+
+  cron-parser@5.5.0:
+    dependencies:
+      luxon: 3.7.2
 
   cross-dirname@0.1.0:
     optional: true
@@ -28816,6 +28898,8 @@ snapshots:
   lru-cache@6.0.0:
     dependencies:
       yallist: 4.0.0
+
+  luxon@3.7.2: {}
 
   macaddress@0.5.4: {}
 

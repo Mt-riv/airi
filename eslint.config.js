@@ -27,6 +27,15 @@ export default defineConfig({
     '**/.astro/**',
     '.agents/**',
     'CLAUDE.md', // Skip the symbolic link
+    // NOTICE: PLAN.md working docs (and PLAN.archive-*.md history) embed
+    // nested markdown fences with inner `---` frontmatter delimiters
+    // (e.g. SKILL.md examples), which crash @eslint/markdown's processor:
+    // "MarkdownSourceCode.getLoc is not implemented in the subclass".
+    // These files are plan/narrative artifacts, not publishable docs —
+    // ignore them from lint. Remove individual entries once the upstream
+    // parser stops choking on fenced frontmatter.
+    'PLAN.md',
+    'PLAN.archive-*.md',
   ],
 }, {
   rules: {

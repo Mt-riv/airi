@@ -10,6 +10,13 @@ packages:
   - apps/**
   - '!**/dist/**'
 overrides:
+  # NOTICE: @eslint/markdown@7.5.1 (pulled in via @antfu/eslint-config) depends
+  # on @eslint/plugin-kit@^0.4.x, but its markdown source-code class calls
+  # getLoc/getRange which only exist in @eslint/plugin-kit@>=0.6. Without this
+  # pin, repo-wide `pnpm lint` crashes with
+  # "MarkdownSourceCode.getLoc is not implemented". Per-file lint avoids the
+  # crash because the markdown parser is not loaded for non-.md inputs.
+  '@eslint/plugin-kit': ^0.6.1
   array-flatten: npm:@nolyfill/array-flatten@^1.0.44
   axios: npm:feaxios@^0.0.23
   is-core-module: npm:@nolyfill/is-core-module@^1.0.39
