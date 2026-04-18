@@ -100,7 +100,16 @@ describe('executeTool (patched @xsai/shared-chat)', () => {
     expect(out.completionToolResult.isError).toBe(true)
     expect(ToolExecutionError.isInstance(out.completionToolResult.error)).toBe(true)
     expect(String(out.message.content)).toContain('myTool')
-    expect(String(out.message.content)).toContain('execute failed')
+    // NOTICE: the patched @xsai/shared-chat wraps thrown errors in a
+    // ToolExecutionError with a generic `Tool "<name>" execution failed.`
+    // message; the original error is preserved on `.cause`. Assert against
+    // both so the user-visible wrapper and the underlying reason stay
+    // covered — if buildErrorReturn ever starts concatenating cause.message
+    // into the content, broaden the content check accordingly.
+    expect(String(out.message.content)).toContain('execution failed')
+    const toolError = out.completionToolResult.error as ToolExecutionError & { cause?: unknown }
+    expect(toolError.cause).toBeInstanceOf(Error)
+    expect((toolError.cause as Error).message).toBe('execute failed')
   })
 
   it('rethrows AbortError from tool execute', async () => {

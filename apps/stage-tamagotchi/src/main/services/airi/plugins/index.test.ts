@@ -61,10 +61,19 @@ const samplePluginRoot = resolve(
 )
 
 async function writeManifest(params: { dir: string, name: string, entrypoint: string }) {
+  // NOTICE: `permissions` became a required field on manifestV1Schema after
+  // plugin-sdk commit a2e134d4 ("feat(plugin-sdk): much better refactor, and
+  // new permission model"). Emitting an empty permissions block keeps these
+  // fixtures schema-valid without granting anything.
   const manifest = {
     apiVersion: 'v1',
     kind: 'manifest.plugin.airi.moeru.ai',
     name: params.name,
+    permissions: {
+      apis: [],
+      resources: [],
+      capabilities: [],
+    },
     entrypoints: {
       electron: params.entrypoint,
     },

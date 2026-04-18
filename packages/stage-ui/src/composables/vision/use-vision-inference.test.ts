@@ -83,6 +83,7 @@ describe('useVisionInference', () => {
     const result = runVisionInference({
       imageDataUrl: 'data:image/png;base64,Zm9v',
       workloadId: 'screen:interpret',
+      timeoutMs: 15_000,
     })
     const expectation = expect(result).rejects.toThrow('Vision inference timed out after 15000ms')
 
