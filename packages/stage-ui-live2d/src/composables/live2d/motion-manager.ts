@@ -437,3 +437,31 @@ export function useMotionUpdatePluginExpression(
     controller.applyExpressions(ctx.model)
   }
 }
+
+/**
+ * Final-stage plugin that overrides `ParamMouthOpenY` with the current lip-sync
+ * value while the character is speaking.
+ *
+ * Idle/runtime motion curves also write to `ParamMouthOpenY` every frame; if the
+ * lip-sync value is written via a Vue watcher it can be clobbered by the curve,
+ * causing the mouth to flicker or freeze. Running this override in the `final`
+ * stage guarantees it wins over both the hooked motion update and any earlier
+ * pre/post plugin, so lip-sync takes priority over any waiting/idle motion.
+ *
+ * When `mouthOpenSize <= activeThreshold` the plugin is a no-op, letting motion
+ * curves drive the mouth naturally during silence.
+ */
+export function useMotionUpdatePluginLipSync(
+  mouthOpenSize: Ref<number>,
+  options?: { activeThreshold?: number, normalize?: (raw: number) => number },
+): MotionManagerPlugin {
+  const threshold = options?.activeThreshold ?? 0
+  const normalize = options?.normalize ?? (raw => raw)
+
+  return (ctx) => {
+    const raw = mouthOpenSize.value
+    if (!Number.isFinite(raw) || raw <= threshold)
+      return
+    ctx.model.setParameterValueById('ParamMouthOpenY', normalize(raw))
+  }
+}

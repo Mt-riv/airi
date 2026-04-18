@@ -24,6 +24,7 @@ import {
   useMotionUpdatePluginExpression,
   useMotionUpdatePluginIdleDisable,
   useMotionUpdatePluginIdleFocus,
+  useMotionUpdatePluginLipSync,
 } from '../../../composables/live2d'
 import { Emotion, EmotionNeutralMotionName } from '../../../constants/emotions'
 import { useLive2d } from '../../../stores/live2d'
@@ -116,10 +117,6 @@ const dropShadowFilter = shallowRef(new DropShadowFilter({
   distance: 20,
   rotation: 45,
 }))
-
-function getCoreModel() {
-  return model.value!.internalModel.coreModel as any
-}
 
 let resizeAnimation: ReturnType<typeof animate> | undefined
 
@@ -372,12 +369,15 @@ async function loadModel() {
     motionManagerUpdate.register(useMotionUpdatePluginBeatSync(beatSync), 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginIdleDisable(), 'pre')
     motionManagerUpdate.register(useMotionUpdatePluginIdleFocus(), 'post')
-    // Both run in 'final' stage (ignores handled state).
+    // All three run in 'final' stage (ignores handled state).
     // Expression first: sets desired parameter values (e.g. closed eyes = 0).
     // Blink second: reads post-expression eye values, Multiply-modulates on top.
     // This ensures blink respects expression state (0 × blinkFactor = 0).
+    // Lip-sync last: overrides ParamMouthOpenY so idle motion curves never
+    // clobber the mouth-open value while the character is speaking.
     motionManagerUpdate.register(useMotionUpdatePluginExpression(expressionController), 'final')
     motionManagerUpdate.register(useMotionUpdatePluginAutoEyeBlink(live2dExpressionEnabled), 'final')
+    motionManagerUpdate.register(useMotionUpdatePluginLipSync(mouthOpenSize), 'final')
 
     const hookedUpdate = motionManager.update as (model: PixiLive2DInternalModel['coreModel'], now: number) => boolean
     motionManager.update = function (model: PixiLive2DInternalModel['coreModel'], now: number) {
@@ -573,7 +573,10 @@ watch([themeColorsHueDynamic, live2dShadowEnabled], ([dynamic, shadowEnabled]) =
   }
 }, { immediate: true })
 
-watch(mouthOpenSize, value => getCoreModel().setParameterValueById('ParamMouthOpenY', value))
+// NOTICE: ParamMouthOpenY is no longer written via a Vue watcher here.
+// The `useMotionUpdatePluginLipSync` final-stage plugin writes this parameter
+// every frame after motion curves run, eliminating the race where idle motion
+// curves clobbered the lip-sync value between watcher flushes.
 watch(currentMotion, value => setMotion(value.group, value.index))
 watch(paused, value => value ? pixiApp.value?.stop() : pixiApp.value?.start())
 
