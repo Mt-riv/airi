@@ -71,14 +71,20 @@ export function setupAgentManager(options: SetupAgentManagerOptions): AgentManag
   return manager
 }
 
-export interface CreateAgentServiceParams {
+export interface CreateAgentInvokeHandlersParams {
   context: ReturnType<typeof createContext>['context']
   manager: AgentManager
 }
 
-export function createAgentService(params: CreateAgentServiceParams): () => void {
+// NOTICE: Invoke handlers MUST be registered on a single shared ipcMain-only
+// context, not per-window. Each `createContext(ipcMain, window)` installs its
+// own `ipcMain.on('eventa-message', ...)` listener, and all such listeners
+// fire on every renderer invoke. Registering this block per-window would
+// cause `manager.addCronJob(payload)` (and every other mutator) to fire once
+// per wired window — producing duplicate cron entries. See regression fix in
+// `main/index.ts` where this is invoked exactly once at app startup.
+export function createAgentInvokeHandlers(params: CreateAgentInvokeHandlersParams): void {
   const { context, manager } = params
-  const log = useLogg('main/agent-runtime').useGlobalConfig()
 
   defineInvokeHandlers(context, {
     agentRuntimeStatus,
@@ -154,10 +160,21 @@ export function createAgentService(params: CreateAgentServiceParams): () => void
       return manager.toggleCronJob(payload.id, payload.enabled)
     },
   })
+}
 
-  // Register this context as a cron-trigger broadcaster. When the scheduler
-  // fires a job, main emits the event here; the renderer that owns this
-  // context will run the harness locally.
+export interface CreateAgentBroadcasterParams {
+  context: ReturnType<typeof createContext>['context']
+  manager: AgentManager
+}
+
+// Register a per-window cron-trigger broadcaster. When the scheduler fires a
+// job, main emits the event on this window's context so the renderer that
+// owns it runs the harness locally. Multiple broadcasters can coexist — each
+// window should call this once with its own per-window eventa context.
+export function createAgentBroadcaster(params: CreateAgentBroadcasterParams): () => void {
+  const { context, manager } = params
+  const log = useLogg('main/agent-runtime').useGlobalConfig()
+
   const unregister = manager.registerCronBroadcaster((payload) => {
     try {
       context.emit(agentRuntimeCronTriggered, payload)

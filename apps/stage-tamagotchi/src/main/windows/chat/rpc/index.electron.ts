@@ -12,7 +12,7 @@ import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { ipcMain } from 'electron'
 
 import { electronOpenMainDevtools } from '../../../../shared/eventa'
-import { createAgentService } from '../../../services/airi/agent/electron-service'
+import { createAgentBroadcaster } from '../../../services/airi/agent/electron-service'
 import { createClaudeCodeService } from '../../../services/airi/claude-code/electron-service'
 import { createMcpServersService } from '../../../services/airi/mcp-servers'
 import { createWidgetsService } from '../../../services/airi/widgets'
@@ -39,7 +39,7 @@ export async function setupChatWindowElectronInvokes(params: {
   createWidgetsService({ context, widgetsManager: params.widgetsManager, window: params.window })
   createMcpServersService({ context, manager: params.mcpStdioManager })
   createClaudeCodeService({ context, manager: params.claudeCodeManager })
-  createAgentService({ context, manager: params.agentManager })
+  createAgentBroadcaster({ context, manager: params.agentManager })
 
   defineInvokeHandler(context, electronOpenMainDevtools, () => params.window.webContents.openDevTools({ mode: 'detach' }))
 }

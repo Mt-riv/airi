@@ -387,8 +387,16 @@ export const useAgentRuntimeStore = defineStore('modules:agent-runtime', () => {
       if (!status)
         return
       enabled.value = status.enabled
-      if (!val)
+      if (!val) {
         cancelAllTurns()
+        cronJobs.value = []
+      }
+      else {
+        // Refresh once the scheduler finished loading from disk — otherwise
+        // the list reflects the pre-enable empty snapshot and new jobs appear
+        // to vanish until the user clicks around.
+        await listCronJobs()
+      }
     }
     catch (error) {
       console.warn('[AgentRuntime] Failed to set enabled:', errorMessageFrom(error))
@@ -417,13 +425,23 @@ export const useAgentRuntimeStore = defineStore('modules:agent-runtime', () => {
     }
   }
 
-  async function addCronJob(job: Omit<AgentRuntimeCronJob, 'nextRunAt' | 'lastRunAt'>) {
+  async function addCronJob(
+    job: Omit<AgentRuntimeCronJob, 'nextRunAt' | 'lastRunAt'>,
+  ): Promise<{ ok: boolean, error?: string }> {
     try {
-      await invokeAddCronJob(job)
+      const created = await invokeAddCronJob(job)
+      if (!created) {
+        // safeInvoke returns null when the Electron IPC bridge is missing — the
+        // UI still needs to know so it does not pretend the add succeeded.
+        return { ok: false, error: 'IPC bridge unavailable (not running in Electron?)' }
+      }
       await listCronJobs()
+      return { ok: true }
     }
     catch (error) {
-      console.warn('[AgentRuntime] Failed to add cron job:', errorMessageFrom(error))
+      const message = errorMessageFrom(error) ?? 'Failed to add cron job'
+      console.warn('[AgentRuntime] Failed to add cron job:', message)
+      return { ok: false, error: message }
     }
   }
 
@@ -470,7 +488,13 @@ export const useAgentRuntimeStore = defineStore('modules:agent-runtime', () => {
   }
 
   onMounted(() => {
-    void refreshStatus()
+    void refreshStatus().then(() => {
+      // NOTICE: list after status so we know whether the runtime is enabled
+      // (the main side returns [] while disabled). Keeps the settings page
+      // from flashing an empty list when jobs already exist on disk.
+      if (enabled.value)
+        void listCronJobs()
+    })
     subscribeCronTriggers()
   })
 

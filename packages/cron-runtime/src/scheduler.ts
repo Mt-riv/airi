@@ -98,7 +98,16 @@ export function createCronScheduler(options: CreateSchedulerOptions): CronSchedu
       }
       running = true
       const jobs = await store.load()
-      cache = jobs.map(j => (j.enabled ? withNextRunAt(j, clock.now()) : j))
+      // NOTICE: Dedup by job id (last-write wins). A historical bug where
+      // multiple windows each registered their own eventa invoke handler
+      // caused `addJob` to be dispatched N times per UI click, persisting
+      // N duplicates of the same job into jobs.json. That root cause is
+      // fixed elsewhere, but previously-installed users still have those
+      // duplicates on disk. Collapsing here lets the next save() overwrite
+      // jobs.json with the cleaned list.
+      const deduped = new Map<string, CronJob>()
+      for (const j of jobs) deduped.set(j.id, j)
+      cache = Array.from(deduped.values()).map(j => (j.enabled ? withNextRunAt(j, clock.now()) : j))
       await store.save([...cache])
       reschedule()
     },

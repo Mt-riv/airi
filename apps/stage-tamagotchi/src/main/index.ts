@@ -9,6 +9,7 @@ import messages from '@proj-airi/i18n/locales'
 
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { Format, LogLevel, setGlobalFormat, setGlobalHookPostLog, setGlobalLogLevel, useLogg } from '@guiiai/logg'
+import { createContext as createEventaMainContext } from '@moeru/eventa/adapters/electron/main'
 import { initScreenCaptureForMain } from '@proj-airi/electron-screen-capture/main'
 import { app, ipcMain } from 'electron'
 import { noop } from 'es-toolkit'
@@ -23,7 +24,7 @@ import { createGlobalAppConfig } from './configs/global'
 import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed } from './libs/bootkit/lifecycle'
 import { setElectronMainDirname } from './libs/electron/location'
 import { createI18n } from './libs/i18n'
-import { setupAgentManager } from './services/airi/agent/electron-service'
+import { createAgentInvokeHandlers, setupAgentManager } from './services/airi/agent/electron-service'
 import { createWindowAuthManagerService } from './services/airi/auth'
 import { setupServerChannel } from './services/airi/channel-server'
 import { setupClaudeCodeManager } from './services/airi/claude-code/electron-service'
@@ -161,6 +162,23 @@ app.whenReady().then(async () => {
     },
   })
 
+  // NOTICE: Agent-runtime invoke handlers MUST be registered exactly once, on
+  // a shared ipcMain-only eventa context (no window). Registering them
+  // per-window would install one `ipcMain.on('eventa-message', ...)` listener
+  // per window, and every listener fires on every renderer invoke — the
+  // shared `agentManager` would then see N duplicated calls to `addCronJob`
+  // (etc.), producing duplicated cron entries. Replies take the
+  // `options.raw.ipcMainEvent.sender` path when no window is bound, so they
+  // still reach the calling renderer.
+  const agentInvokeContext = injeca.provide('modules:agent-invoke-context', {
+    dependsOn: { agentManager },
+    build: ({ dependsOn }) => {
+      const { context, dispose } = createEventaMainContext(ipcMain)
+      createAgentInvokeHandlers({ context, manager: dependsOn.agentManager })
+      return { context, dispose }
+    },
+  })
+
   const pluginHost = injeca.provide('modules:plugin-host', {
     dependsOn: { serverChannel },
     build: () => setupPluginHost(),
@@ -219,7 +237,7 @@ app.whenReady().then(async () => {
   })
 
   injeca.invoke({
-    dependsOn: { mainWindow, tray, serverChannel, pluginHost, mcpStdioManager, agentManager, onboardingWindow: onboardingWindowManager },
+    dependsOn: { mainWindow, tray, serverChannel, pluginHost, mcpStdioManager, agentManager, agentInvokeContext, onboardingWindow: onboardingWindowManager },
     callback: noop,
   })
 

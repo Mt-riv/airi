@@ -7,6 +7,15 @@ import { reactive, ref } from 'vue'
 const store = useAgentRuntimeStore()
 const { enabled, skills, cronJobs } = storeToRefs(store)
 
+// NOTICE: Route v-model through the store action so the toggle actually hits
+// main (cron scheduler start/stop + persistence). A bare `v-model="enabled"`
+// would only flip the local Pinia ref without calling `setEnabled`, so main
+// never transitions and any subsequent addCronJob is rejected with
+// "agent-runtime-disabled" — which the store silently warns about.
+async function handleEnabledChange(val: boolean) {
+  await store.setEnabled(val)
+}
+
 const reloadingSkills = ref(false)
 async function handleReloadSkills() {
   reloadingSkills.value = true
@@ -33,10 +42,18 @@ async function handleAddCronJob() {
     addJobError.value = 'All fields are required.'
     return
   }
+  if (!enabled.value) {
+    addJobError.value = 'Enable Agent Runtime before adding a cron job.'
+    return
+  }
   addJobError.value = ''
   addingJob.value = true
   try {
-    await store.addCronJob({ ...newJob })
+    const result = await store.addCronJob({ ...newJob })
+    if (!result.ok) {
+      addJobError.value = result.error ?? 'Failed to add cron job.'
+      return
+    }
     newJob.id = ''
     newJob.name = ''
     newJob.cron = ''
@@ -65,9 +82,10 @@ async function handleToggleCronJob(id: string, enabled: boolean) {
         General
       </h2>
       <FieldCheckbox
-        v-model="enabled"
+        :model-value="enabled"
         label="Enable Agent Runtime"
         description="Allow Airi to run autonomous skills and scheduled cron jobs in the background."
+        @update:model-value="handleEnabledChange"
       />
     </section>
 

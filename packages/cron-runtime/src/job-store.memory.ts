@@ -1,7 +1,10 @@
 import type { CronJob, JobStore } from './types'
 
-export function createMemoryJobStore(): JobStore {
+export function createMemoryJobStore(initial: CronJob[] = []): JobStore {
   const jobs = new Map<string, CronJob>()
+  for (const job of initial) {
+    jobs.set(job.id, job)
+  }
 
   return {
     async load() {

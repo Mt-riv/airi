@@ -17,7 +17,7 @@ import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { ipcMain } from 'electron'
 
 import { electronOpenChat, electronOpenMainDevtools, electronOpenSettings, noticeWindowEventa } from '../../../../shared/eventa'
-import { createAgentService } from '../../../services/airi/agent/electron-service'
+import { createAgentBroadcaster } from '../../../services/airi/agent/electron-service'
 import { createAuthService } from '../../../services/airi/auth'
 import { createClaudeCodeService } from '../../../services/airi/claude-code/electron-service'
 import { createMcpServersService } from '../../../services/airi/mcp-servers'
@@ -54,7 +54,7 @@ export async function setupMainWindowElectronInvokes(params: {
   createAutoUpdaterService({ context, window: params.window, service: params.autoUpdater })
   createMcpServersService({ context, manager: params.mcpStdioManager })
   createClaudeCodeService({ context, manager: params.claudeCodeManager })
-  createAgentService({ context, manager: params.agentManager })
+  createAgentBroadcaster({ context, manager: params.agentManager })
   createOnboardingService({ context, onboardingWindowManager: params.onboardingWindowManager })
   createAuthService({ context, window: params.window, windowAuthManager: params.windowAuthManager })
 

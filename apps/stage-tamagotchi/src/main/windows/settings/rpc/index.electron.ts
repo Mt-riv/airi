@@ -15,7 +15,7 @@ import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { ipcMain } from 'electron'
 
 import { electronOpenDevtoolsWindow, electronOpenSettingsDevtools } from '../../../../shared/eventa'
-import { createAgentService } from '../../../services/airi/agent/electron-service'
+import { createAgentBroadcaster } from '../../../services/airi/agent/electron-service'
 import { createAuthService } from '../../../services/airi/auth'
 import { createClaudeCodeService } from '../../../services/airi/claude-code/electron-service'
 import { createMcpServersService } from '../../../services/airi/mcp-servers'
@@ -48,7 +48,7 @@ export async function setupSettingsWindowInvokes(params: {
   createAutoUpdaterService({ context, window: params.settingsWindow, service: params.autoUpdater })
   createMcpServersService({ context, manager: params.mcpStdioManager })
   createClaudeCodeService({ context, manager: params.claudeCodeManager })
-  createAgentService({ context, manager: params.agentManager })
+  createAgentBroadcaster({ context, manager: params.agentManager })
   createAuthService({ context, window: params.settingsWindow, windowAuthManager: params.windowAuthManager })
 
   defineInvokeHandler(context, electronOpenSettingsDevtools, async () => params.settingsWindow.webContents.openDevTools({ mode: 'detach' }))

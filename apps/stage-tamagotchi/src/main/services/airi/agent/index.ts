@@ -1,5 +1,7 @@
 import type { AgentManager, CreateAgentManagerDeps, CronBroadcaster } from './types'
 
+import { errorMessageFrom } from '@moeru/std'
+
 import { onAppBeforeQuit } from '../../../libs/bootkit/lifecycle'
 
 export interface AgentManagerInternals {
@@ -12,15 +14,26 @@ export function createAgentManager(deps: CreateAgentManagerDeps): AgentManager &
   let enabled = deps.initialEnabled
   const broadcasters = new Set<CronBroadcaster>()
 
+  // NOTICE: cronReady gates every mutator on the scheduler. When the app boots
+  // with `agentRuntime.enabled=true` persisted, the scheduler must call
+  // `start()` so its in-memory cache is populated from `jobs.json` before any
+  // addJob/toggleJob runs. Skipping that step would let a subsequent
+  // `cron.addJob(...)` overwrite `jobs.json` with only the new entry (every
+  // prior job silently lost) and leave the timer un-armed because the
+  // scheduler never flipped `running` to true.
+  let cronReady: Promise<void> = enabled
+    ? cron.start().catch((err: unknown) => {
+        console.warn(`[agent-runtime] cron.start failed on boot: ${errorMessageFrom(err)}`)
+      })
+    : Promise.resolve()
+
   const isEnabled = (): boolean => enabled
 
   const setEnabled = async (value: boolean): Promise<void> => {
     enabled = value
     await persistEnabled(value)
-    if (value)
-      await cron.start()
-    else
-      await cron.stop()
+    cronReady = value ? cron.start() : cron.stop()
+    await cronReady
   }
 
   // NOTICE: cronJobsEnabled is always 0 here because listJobs() is async.
@@ -65,10 +78,22 @@ export function createAgentManager(deps: CreateAgentManagerDeps): AgentManager &
     status,
     listSkills: () => skills.list(),
     reloadSkills: () => skills.reload(),
-    listCronJobs: () => cron.listJobs(),
-    addCronJob: job => cron.addJob(job),
-    removeCronJob: id => cron.removeJob(id),
-    toggleCronJob: (id, val) => cron.toggleJob(id, val),
+    listCronJobs: async () => {
+      await cronReady
+      return cron.listJobs()
+    },
+    addCronJob: async (job) => {
+      await cronReady
+      return cron.addJob(job)
+    },
+    removeCronJob: async (id) => {
+      await cronReady
+      return cron.removeJob(id)
+    },
+    toggleCronJob: async (id, val) => {
+      await cronReady
+      return cron.toggleJob(id, val)
+    },
     registerCronBroadcaster,
     stopAll,
     broadcastCronTrigger,
