@@ -1,4 +1,5 @@
 import type { I18n } from '../../libs/i18n'
+import type { AgentManager } from '../../services/airi/agent/types'
 import type { WindowAuthManager } from '../../services/airi/auth'
 import type { ServerChannel } from '../../services/airi/channel-server'
 import type { ClaudeCodeManager } from '../../services/airi/claude-code'
@@ -33,6 +34,7 @@ export function setupSettingsWindowReusableFunc(params: {
   serverChannel: ServerChannel
   mcpStdioManager: McpStdioManager
   claudeCodeManager: ClaudeCodeManager
+  agentManager: AgentManager
   i18n: I18n
   windowAuthManager: WindowAuthManager
 }): SettingsWindowManager {
@@ -73,6 +75,7 @@ export function setupSettingsWindowReusableFunc(params: {
       serverChannel: params.serverChannel,
       mcpStdioManager: params.mcpStdioManager,
       claudeCodeManager: params.claudeCodeManager,
+      agentManager: params.agentManager,
       i18n: params.i18n,
       windowAuthManager: params.windowAuthManager,
     })

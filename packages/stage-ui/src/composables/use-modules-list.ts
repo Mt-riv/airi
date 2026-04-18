@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 
 import factorioIcon from '../assets/factorio-simple.png'
 
+import { useAgentRuntimeStore } from '../stores/modules/agent-runtime'
 import { useConsciousnessStore } from '../stores/modules/consciousness'
 import { useDiscordStore } from '../stores/modules/discord'
 import { useFactorioStore } from '../stores/modules/gaming-factorio'
@@ -41,6 +42,7 @@ export function useModulesList() {
   const minecraftStore = useMinecraftStore()
   const factorioStore = useFactorioStore()
   const claudeCodeSettings = useSettingsClaudeCode()
+  const agentRuntimeStore = useAgentRuntimeStore()
   const beatSyncState = ref<BeatSyncDetectorState>()
 
   minecraftStore.initialize()
@@ -152,6 +154,15 @@ export function useModulesList() {
       icon: 'i-simple-icons:anthropic',
       to: '/settings/modules/claude-code',
       configured: claudeCodeSettings.configured,
+      category: 'essential',
+    },
+    {
+      id: 'agent-runtime',
+      name: t('settings.pages.modules.agent-runtime.title'),
+      description: t('settings.pages.modules.agent-runtime.description'),
+      icon: 'i-solar:cpu-bolt-bold-duotone',
+      to: '/settings/modules/agent-runtime',
+      configured: agentRuntimeStore.configured,
       category: 'essential',
     },
     {

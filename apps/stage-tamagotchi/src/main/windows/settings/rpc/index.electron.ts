@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron'
 
 import type { I18n } from '../../../libs/i18n'
+import type { AgentManager } from '../../../services/airi/agent/types'
 import type { WindowAuthManager } from '../../../services/airi/auth'
 import type { ServerChannel } from '../../../services/airi/channel-server'
 import type { ClaudeCodeManager } from '../../../services/airi/claude-code'
@@ -14,6 +15,7 @@ import { createContext } from '@moeru/eventa/adapters/electron/main'
 import { ipcMain } from 'electron'
 
 import { electronOpenDevtoolsWindow, electronOpenSettingsDevtools } from '../../../../shared/eventa'
+import { createAgentService } from '../../../services/airi/agent/electron-service'
 import { createAuthService } from '../../../services/airi/auth'
 import { createClaudeCodeService } from '../../../services/airi/claude-code/electron-service'
 import { createMcpServersService } from '../../../services/airi/mcp-servers'
@@ -29,6 +31,7 @@ export async function setupSettingsWindowInvokes(params: {
   serverChannel: ServerChannel
   mcpStdioManager: McpStdioManager
   claudeCodeManager: ClaudeCodeManager
+  agentManager: AgentManager
   i18n: I18n
   windowAuthManager: WindowAuthManager
 }) {
@@ -45,6 +48,7 @@ export async function setupSettingsWindowInvokes(params: {
   createAutoUpdaterService({ context, window: params.settingsWindow, service: params.autoUpdater })
   createMcpServersService({ context, manager: params.mcpStdioManager })
   createClaudeCodeService({ context, manager: params.claudeCodeManager })
+  createAgentService({ context, manager: params.agentManager })
   createAuthService({ context, window: params.settingsWindow, windowAuthManager: params.windowAuthManager })
 
   defineInvokeHandler(context, electronOpenSettingsDevtools, async () => params.settingsWindow.webContents.openDevTools({ mode: 'detach' }))

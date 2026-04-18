@@ -520,6 +520,29 @@ pages:
           title: プロジェクトディレクトリ
           description: Claude Code セッション監視の対象ディレクトリ。
           placeholder: /Users/you/your-project
+    agent-runtime:
+      title: エージェントランタイム
+      description: 自律エージェントスキルと cron スケジュール実行
+      enable: エージェントランタイムを有効化
+      enable-description: Airi がバックグラウンドで自律スキルとスケジュール実行を行えるようにします。
+      skills:
+        section: スキル
+        reload: スキルを再読み込み
+        empty: 読み込まれたスキルはありません
+      cron:
+        section: Cron ジョブ
+        add: Cron ジョブを追加
+        expression: Cron 式
+        prompt: プロンプト
+        empty: 設定された cron ジョブはありません
+      approval:
+        title: エージェントが機微なツールの実行を要求しています
+        approve: 承認
+        reject: 拒否
+        input-label: 入力
+        reject-reason-label: 拒否理由(任意)
+        reject-reason-placeholder: 実行を避けるべき理由…
+        queued: '+{count} 件待機中'
     mcp-server:
       description: MCPサーバーとツールの接続と管理
       title: MCPサーバー

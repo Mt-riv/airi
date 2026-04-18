@@ -518,6 +518,29 @@ pages:
         opened: 配置文件已于 {path} 打开
         restarted: >-
           MCP 服务已重新启动，启动了 {started}，未启动 {failed}，跳过 {skipped}
+    agent-runtime:
+      title: 智能体运行时
+      description: 自主智能体技能和定时任务调度
+      enable: 启用智能体运行时
+      enable-description: 允许 Airi 在后台运行自主技能与定时任务。
+      skills:
+        section: 技能
+        reload: 重新加载技能
+        empty: 暂无已加载的技能
+      cron:
+        section: 定时任务
+        add: 添加定时任务
+        expression: Cron 表达式
+        prompt: 提示词
+        empty: 暂无已配置的定时任务
+      approval:
+        title: 智能体请求执行敏感工具
+        approve: 批准
+        reject: 拒绝
+        input-label: 输入
+        reject-reason-label: 拒绝理由(可选)
+        reject-reason-placeholder: 不应执行的原因…
+        queued: '+{count} 个等待中'
   flux:
     title: Flux
     buy: 充值

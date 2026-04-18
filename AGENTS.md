@@ -50,6 +50,15 @@ Concise but detailed reference for contributors working across the `moeru-ai/air
 - `packages/stage-shared`: Shared logic across stage-ui, stage-ui-three, stage-web, stage-tamagotchi.
 - `packages/ui`: Standardized primitives (inputs/textarea/buttons/layout) built on reka-ui.
 - `packages/i18n`: All translations.
+- Agent runtime channel:
+  - `packages/agent-runtime`: harness core (`createAgentHarness`, `runAttempt`, `handleToolCall`, `evaluateSensitivity`, `createInteractiveApprovalGate`).
+  - `packages/skill-registry`: SKILL.md loader + trigger-based registry.
+  - `packages/cron-runtime`: single-timer reschedule cron scheduler with pluggable `Clock` / `JobStore`.
+  - Main-process wiring: `apps/stage-tamagotchi/src/main/services/airi/{agent,skills,cron}`.
+  - Renderer store: `packages/stage-ui/src/stores/modules/agent-runtime.ts`.
+  - Approval UI: `apps/stage-tamagotchi/src/renderer/components/agent/approval-modal.vue`, `apps/stage-tamagotchi/src/renderer/composables/agent-approval.ts`.
+  - Docs: `docs/integrations/agent-runtime.md`, `docs/integrations/skill-authoring-guide.md`, `docs/integrations/agent-runtime-security.md`.
+  - Integration test (opt-in): `apps/stage-tamagotchi/test/integration/agent-runtime.test.ts` (`AIRI_TEST_AGENT_RUNTIME=1`).
 - Server channel: `packages/server-runtime`, `packages/server-sdk`, `packages/server-shared` (power `services/` and `plugins/`).
 - Legacy desktop: `crates/` (old Tauri; Electron is current).
 - Pages: `packages/stage-pages` (shared bases); `apps/stage-web/src/pages` and `apps/stage-tamagotchi/src/renderer/pages` for app-specific pages; devtools live in each app’s `.../pages/devtools`.

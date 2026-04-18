@@ -1,4 +1,5 @@
 import type { I18n } from '../../libs/i18n'
+import type { AgentManager } from '../../services/airi/agent/types'
 import type { ServerChannel } from '../../services/airi/channel-server'
 import type { ClaudeCodeManager } from '../../services/airi/claude-code'
 import type { McpStdioManager } from '../../services/airi/mcp-servers'
@@ -19,6 +20,7 @@ export function setupChatWindowReusableFunc(params: {
   serverChannel: ServerChannel
   mcpStdioManager: McpStdioManager
   claudeCodeManager: ClaudeCodeManager
+  agentManager: AgentManager
   i18n: I18n
 }) {
   return createReusableWindow(async () => {
@@ -48,6 +50,7 @@ export function setupChatWindowReusableFunc(params: {
       serverChannel: params.serverChannel,
       mcpStdioManager: params.mcpStdioManager,
       claudeCodeManager: params.claudeCodeManager,
+      agentManager: params.agentManager,
       i18n: params.i18n,
     })
 

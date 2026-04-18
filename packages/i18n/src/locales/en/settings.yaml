@@ -549,6 +549,29 @@ pages:
           title: Project directory
           description: Working directory for Claude Code session monitoring.
           placeholder: /Users/you/your-project
+    agent-runtime:
+      title: Agent Runtime
+      description: Autonomous agent skills and scheduled cron jobs
+      enable: Enable Agent Runtime
+      enable-description: Allow Airi to run autonomous skills and scheduled cron jobs in the background.
+      skills:
+        section: Skills
+        reload: Reload Skills
+        empty: No skills loaded
+      cron:
+        section: Cron Jobs
+        add: Add Cron Job
+        expression: Cron Expression
+        prompt: Prompt
+        empty: No cron jobs configured
+      approval:
+        title: Agent wants to run a sensitive tool
+        approve: Approve
+        reject: Reject
+        input-label: Input
+        reject-reason-label: Rejection reason (optional)
+        reject-reason-placeholder: Why this should not run…
+        queued: '+{count} queued'
     mcp-server:
       description: Connect and manage MCP server and tools
       title: MCP Server

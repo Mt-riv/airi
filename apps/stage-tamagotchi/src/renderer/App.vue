@@ -22,6 +22,7 @@ import { useI18n } from 'vue-i18n'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { toast, Toaster } from 'vue-sonner'
 
+import AgentApprovalModal from './components/agent/approval-modal.vue'
 import ResizeHandler from './components/ResizeHandler.vue'
 
 import {
@@ -181,6 +182,7 @@ onUnmounted(() => {
   </ToasterRoot>
   <ResizeHandler />
   <RouterView />
+  <AgentApprovalModal />
 </template>
 
 <style>

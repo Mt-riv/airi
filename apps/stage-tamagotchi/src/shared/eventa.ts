@@ -1,5 +1,7 @@
 import type { Locale } from '@intlify/core'
+import type { CronJob } from '@proj-airi/cron-runtime'
 import type { ServerOptions } from '@proj-airi/server-runtime/server'
+import type { SkillDefinition } from '@proj-airi/skill-registry'
 import type { ServerChannelQrPayload } from '@proj-airi/stage-shared/server-channel-qr'
 import type {
   ThreeHitTestReadTracePayload,
@@ -12,6 +14,7 @@ import type {
   VrmUpdateFrameTracePayload,
 } from '@proj-airi/stage-ui-three/trace'
 
+import type { AgentRuntimeStatus } from './agent-runtime'
 import type {
   ClaudeCodeAttachSessionInput,
   ClaudeCodeCheckBinaryInput,
@@ -318,6 +321,23 @@ export const claudeCodeStreamEvent = defineEventa<ClaudeCodeStreamEventPayload>(
 // Phase 5 — configuration probes surfaced by the settings page validators.
 export const claudeCodeCheckBinary = defineInvokeEventa<ClaudeCodeCheckBinaryResult, ClaudeCodeCheckBinaryInput>('eventa:invoke:electron:claude-code:check-binary')
 export const claudeCodeResolveSlug = defineInvokeEventa<ClaudeCodeResolveSlugResult, ClaudeCodeResolveSlugInput>('eventa:invoke:electron:claude-code:resolve-slug')
+
+// Agent runtime integration — see Phase OC-AG-4/6 in PLAN.md.
+// Option A: main owns SkillRegistry + CronScheduler; the renderer owns the
+// AgentHarness, ModelDriver, ToolInvoker, and ApprovalGate. Main publishes
+// `agentRuntimeCronTriggered` when a scheduled job fires and the renderer
+// dispatches a turn locally. Payload types live in
+// `src/shared/agent-runtime.ts`.
+export const agentRuntimeStatus = defineInvokeEventa<AgentRuntimeStatus>('eventa:invoke:electron:agent-runtime:status')
+export const agentRuntimeSetEnabled = defineInvokeEventa<AgentRuntimeStatus, { enabled: boolean }>('eventa:invoke:electron:agent-runtime:set-enabled')
+export const agentRuntimeListSkills = defineInvokeEventa<SkillDefinition[]>('eventa:invoke:electron:agent-runtime:list-skills')
+export const agentRuntimeReloadSkills = defineInvokeEventa<SkillDefinition[]>('eventa:invoke:electron:agent-runtime:reload-skills')
+export const agentRuntimeListCronJobs = defineInvokeEventa<CronJob[]>('eventa:invoke:electron:agent-runtime:list-cron-jobs')
+export const agentRuntimeAddCronJob = defineInvokeEventa<CronJob, Omit<CronJob, 'nextRunAt' | 'lastRunAt'>>('eventa:invoke:electron:agent-runtime:add-cron-job')
+export const agentRuntimeRemoveCronJob = defineInvokeEventa<{ ok: boolean }, { id: string }>('eventa:invoke:electron:agent-runtime:remove-cron-job')
+export const agentRuntimeToggleCronJob = defineInvokeEventa<CronJob, { id: string, enabled: boolean }>('eventa:invoke:electron:agent-runtime:toggle-cron-job')
+
+export const agentRuntimeCronTriggered = defineEventa<{ jobId: string, turnId: string, prompt: string, skillId?: string }>('eventa:event:electron:agent-runtime:cron-triggered')
 
 export { electron } from '@proj-airi/electron-eventa'
 export * from '@proj-airi/electron-eventa/electron-updater'

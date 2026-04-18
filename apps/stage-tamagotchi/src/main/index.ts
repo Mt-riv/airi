@@ -23,11 +23,13 @@ import { createGlobalAppConfig } from './configs/global'
 import { emitAppBeforeQuit, emitAppReady, emitAppWindowAllClosed } from './libs/bootkit/lifecycle'
 import { setElectronMainDirname } from './libs/electron/location'
 import { createI18n } from './libs/i18n'
+import { setupAgentManager } from './services/airi/agent/electron-service'
 import { createWindowAuthManagerService } from './services/airi/auth'
 import { setupServerChannel } from './services/airi/channel-server'
 import { setupClaudeCodeManager } from './services/airi/claude-code/electron-service'
 import { setupMcpStdioManager } from './services/airi/mcp-servers'
 import { setupPluginHost } from './services/airi/plugins'
+import { setupSkillsManager } from './services/airi/skills'
 import { setupAutoUpdater } from './services/electron/auto-updater'
 import { setupTray } from './tray'
 import { setupAboutWindowReusable } from './windows/about'
@@ -111,6 +113,7 @@ app.whenReady().then(async () => {
         dependsOn.appConfig.update({
           language: currentConfig?.language ?? 'en',
           updateChannel: lane,
+          agentRuntime: currentConfig?.agentRuntime ?? { enabled: false },
         })
       },
     }),
@@ -132,6 +135,30 @@ app.whenReady().then(async () => {
 
   const claudeCodeManager = injeca.provide('modules:claude-code-manager', {
     build: () => setupClaudeCodeManager(),
+  })
+
+  const skillsManager = injeca.provide('modules:skills-manager', {
+    build: () => setupSkillsManager(),
+  })
+
+  const agentManager = injeca.provide('modules:agent-manager', {
+    dependsOn: { appConfig, skillsManager },
+    build: ({ dependsOn }) => {
+      const config = dependsOn.appConfig.get()
+      const initialEnabled = config?.agentRuntime?.enabled ?? false
+      return setupAgentManager({
+        initialEnabled,
+        skillsManager: dependsOn.skillsManager,
+        persistEnabled: async (enabled) => {
+          const current = dependsOn.appConfig.get()
+          dependsOn.appConfig.update({
+            language: current?.language ?? 'en',
+            updateChannel: current?.updateChannel,
+            agentRuntime: { enabled },
+          })
+        },
+      })
+    },
   })
 
   const pluginHost = injeca.provide('modules:plugin-host', {
@@ -167,17 +194,17 @@ app.whenReady().then(async () => {
   })
 
   const chatWindow = injeca.provide('windows:chat', {
-    dependsOn: { widgetsManager, serverChannel, mcpStdioManager, claudeCodeManager, i18n },
+    dependsOn: { widgetsManager, serverChannel, mcpStdioManager, claudeCodeManager, agentManager, i18n },
     build: ({ dependsOn }) => setupChatWindowReusableFunc(dependsOn),
   })
 
   const settingsWindow = injeca.provide('windows:settings', {
-    dependsOn: { widgetsManager, beatSync, autoUpdater, devtoolsMarkdownStressWindow, serverChannel, mcpStdioManager, claudeCodeManager, i18n, windowAuthManager },
+    dependsOn: { widgetsManager, beatSync, autoUpdater, devtoolsMarkdownStressWindow, serverChannel, mcpStdioManager, claudeCodeManager, agentManager, i18n, windowAuthManager },
     build: async ({ dependsOn }) => setupSettingsWindowReusableFunc(dependsOn),
   })
 
   const mainWindow = injeca.provide('windows:main', {
-    dependsOn: { settingsWindow, chatWindow, widgetsManager, noticeWindow, beatSync, autoUpdater, serverChannel, mcpStdioManager, claudeCodeManager, i18n, onboardingWindowManager, windowAuthManager },
+    dependsOn: { settingsWindow, chatWindow, widgetsManager, noticeWindow, beatSync, autoUpdater, serverChannel, mcpStdioManager, claudeCodeManager, agentManager, i18n, onboardingWindowManager, windowAuthManager },
     build: async ({ dependsOn }) => setupMainWindow(dependsOn),
   })
 
@@ -192,7 +219,7 @@ app.whenReady().then(async () => {
   })
 
   injeca.invoke({
-    dependsOn: { mainWindow, tray, serverChannel, pluginHost, mcpStdioManager, onboardingWindow: onboardingWindowManager },
+    dependsOn: { mainWindow, tray, serverChannel, pluginHost, mcpStdioManager, agentManager, onboardingWindow: onboardingWindowManager },
     callback: noop,
   })
 

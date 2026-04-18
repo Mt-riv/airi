@@ -2,6 +2,7 @@ import type { Rectangle } from 'electron'
 import type { InferOutput } from 'valibot'
 
 import type { I18n } from '../../libs/i18n'
+import type { AgentManager } from '../../services/airi/agent/types'
 import type { WindowAuthManager } from '../../services/airi/auth'
 import type { ServerChannel } from '../../services/airi/channel-server'
 import type { ClaudeCodeManager } from '../../services/airi/claude-code'
@@ -59,6 +60,7 @@ export async function setupMainWindow(params: {
   serverChannel: ServerChannel
   mcpStdioManager: McpStdioManager
   claudeCodeManager: ClaudeCodeManager
+  agentManager: AgentManager
   i18n: I18n
   onboardingWindowManager: OnboardingWindowManager
   windowAuthManager: WindowAuthManager
@@ -188,6 +190,7 @@ export async function setupMainWindow(params: {
     serverChannel: params.serverChannel,
     mcpStdioManager: params.mcpStdioManager,
     claudeCodeManager: params.claudeCodeManager,
+    agentManager: params.agentManager,
     i18n: params.i18n,
     onboardingWindowManager: params.onboardingWindowManager,
     windowAuthManager: params.windowAuthManager,
