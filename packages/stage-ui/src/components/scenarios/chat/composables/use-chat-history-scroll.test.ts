@@ -114,7 +114,7 @@ afterEach(() => {
 })
 
 describe('useChatHistoryScroll', () => {
-  it('scrolls on mount and scrolls a new tail into view while following the live edge', async () => {
+  it('scrolls on mount and scrolls to the bottom when a new tail arrives while following the live edge', async () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
     defineScrollMetrics(container, {
@@ -132,11 +132,11 @@ describe('useChatHistoryScroll', () => {
     renderMessages(container, messageList.value)
 
     const scrollIntoView = vi.fn()
-    const mountScrollTo = vi.fn((options?: ScrollToOptions) => {
+    const scrollTo = vi.fn((options?: ScrollToOptions) => {
       container.scrollTop = options?.top ?? 0
     })
     HTMLElement.prototype.scrollIntoView = scrollIntoView
-    setContainerScrollTo(container, mountScrollTo)
+    setContainerScrollTo(container, scrollTo)
     const frameController = createRequestAnimationFrameController()
 
     const scope = effectScope()
@@ -153,17 +153,25 @@ describe('useChatHistoryScroll', () => {
     frameController.runAllFrames()
     await flushDom()
 
-    expect(mountScrollTo).toHaveBeenCalledTimes(1)
-    expect(mountScrollTo).toHaveBeenCalledWith({ top: 480 })
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+    expect(scrollTo).toHaveBeenCalledWith({ top: 480 })
 
     const nextMessage = createAssistantMessage('assistant-2', 'new tail', 3)
     messageList.value = [...messageList.value, nextMessage]
+    defineScrollMetrics(container, {
+      clientHeight: 240,
+      scrollHeight: 720,
+      scrollTop: container.scrollTop,
+    })
     renderMessages(container, messageList.value)
 
     await flushDom()
 
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    // The new tail path fires scrollToBottom via the pendingScrollKey watcher AND via
+    // the MutationObserver that re-sticks to the bottom on post-insert layout growth.
+    expect(scrollTo.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 720 })
 
     scope.stop()
   })
@@ -237,7 +245,10 @@ describe('useChatHistoryScroll', () => {
     renderMessages(container, messageList.value)
 
     const scrollIntoView = vi.fn()
-    setContainerScrollTo(container, vi.fn())
+    const scrollTo = vi.fn((options?: ScrollToOptions) => {
+      container.scrollTop = options?.top ?? 0
+    })
+    setContainerScrollTo(container, scrollTo)
     HTMLElement.prototype.scrollIntoView = scrollIntoView
 
     const scope = effectScope()
@@ -251,6 +262,7 @@ describe('useChatHistoryScroll', () => {
 
     await flushDom()
     scrollIntoView.mockClear()
+    scrollTo.mockClear()
 
     const firstNode = container.querySelector('[data-chat-message-key="user-1"]')
     assert.ok(firstNode)
@@ -265,11 +277,12 @@ describe('useChatHistoryScroll', () => {
     await flushDom()
 
     expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(scrollTo).not.toHaveBeenCalled()
 
     scope.stop()
   })
 
-  it('keeps following the conversation after auto-scrolling a user message to the top', async () => {
+  it('keeps following the conversation across multiple new tail insertions', async () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
     defineScrollMetrics(container, {
@@ -283,14 +296,12 @@ describe('useChatHistoryScroll', () => {
     ])
     renderMessages(container, messageList.value)
 
-    const scrollIntoView = vi.fn(function (this: HTMLElement) {
-      if (this.dataset.chatMessageKey === 'user-1')
-        container.scrollTop = 180
-      else if (this.dataset.chatMessageKey === 'assistant-2')
-        container.scrollTop = 260
-    })
+    const scrollIntoView = vi.fn()
     HTMLElement.prototype.scrollIntoView = scrollIntoView
-    setContainerScrollTo(container, vi.fn())
+    const scrollTo = vi.fn((options?: ScrollToOptions) => {
+      container.scrollTop = options?.top ?? 0
+    })
+    setContainerScrollTo(container, scrollTo)
 
     const scope = effectScope()
 
@@ -303,19 +314,20 @@ describe('useChatHistoryScroll', () => {
     })
 
     await flushDom()
-    scrollIntoView.mockClear()
+    scrollTo.mockClear()
 
     messageList.value = [...messageList.value, createUserMessage('user-1', 'question', 2)]
     defineScrollMetrics(container, {
       clientHeight: 240,
       scrollHeight: 600,
-      scrollTop: 240,
+      scrollTop: container.scrollTop,
     })
     renderMessages(container, messageList.value)
     await flushDom()
 
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
-    expect(scrollIntoView).toHaveBeenNthCalledWith(1, { block: 'start' })
+    const firstInsertCalls = scrollTo.mock.calls.length
+    expect(firstInsertCalls).toBeGreaterThanOrEqual(1)
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 600 })
     container.dispatchEvent(new Event('scroll'))
     await flushDom()
 
@@ -323,13 +335,14 @@ describe('useChatHistoryScroll', () => {
     defineScrollMetrics(container, {
       clientHeight: 240,
       scrollHeight: 760,
-      scrollTop: 180,
+      scrollTop: container.scrollTop,
     })
     renderMessages(container, messageList.value)
     await flushDom()
 
-    expect(scrollIntoView).toHaveBeenCalledTimes(2)
-    expect(scrollIntoView).toHaveBeenNthCalledWith(2, { block: 'start' })
+    expect(scrollTo.mock.calls.length).toBeGreaterThan(firstInsertCalls)
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 760 })
+    expect(scrollIntoView).not.toHaveBeenCalled()
 
     scope.stop()
   })
@@ -350,7 +363,10 @@ describe('useChatHistoryScroll', () => {
 
     const scrollIntoView = vi.fn()
     HTMLElement.prototype.scrollIntoView = scrollIntoView
-    setContainerScrollTo(container, vi.fn())
+    const scrollTo = vi.fn((options?: ScrollToOptions) => {
+      container.scrollTop = options?.top ?? 0
+    })
+    setContainerScrollTo(container, scrollTo)
 
     const scope = effectScope()
 
@@ -363,7 +379,7 @@ describe('useChatHistoryScroll', () => {
     })
 
     await flushDom()
-    scrollIntoView.mockClear()
+    scrollTo.mockClear()
 
     defineScrollMetrics(container, {
       clientHeight: 180,
@@ -375,8 +391,9 @@ describe('useChatHistoryScroll', () => {
     renderMessages(container, messageList.value)
     await flushDom()
 
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
+    expect(scrollTo.mock.calls.length).toBeGreaterThanOrEqual(1)
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 560 })
+    expect(scrollIntoView).not.toHaveBeenCalled()
 
     scope.stop()
   })
@@ -425,8 +442,8 @@ describe('useChatHistoryScroll', () => {
 
     await flushDom()
 
-    expect(scrollTo).toHaveBeenCalledTimes(1)
-    expect(scrollTo).toHaveBeenCalledWith({ top: 760 })
+    expect(scrollTo.mock.calls.length).toBeGreaterThanOrEqual(1)
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 760 })
     expect(scrollIntoView).not.toHaveBeenCalled()
 
     scope.stop()

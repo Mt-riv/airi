@@ -2,6 +2,18 @@ import type { Ref } from 'vue'
 
 import { computed, nextTick, onScopeDispose, readonly, shallowRef, watch } from 'vue'
 
+import { findTextRangeInElement } from './find-text-range-in-element'
+
+const ATTRIBUTE_QUOTE_RE = /"/g
+
+export interface ActiveChatSpeechSegment {
+  intentId: string
+  segmentId: string
+  sequence: number
+  text: string
+  ownerId?: string
+}
+
 // NOTICE: Keep a small tolerance for "near tail" detection so sub-pixel layout shifts,
 // font swaps, and late content growth do not falsely disengage follow mode.
 const TAIL_THRESHOLD = 24
@@ -91,6 +103,37 @@ interface ChatHistoryScrollOptions<TMessage> {
     isFollowingTail: boolean
     isInspectingHistory: boolean
   }) => boolean
+  /**
+   * Reactive handle on the TTS segment currently being voiced.
+   *
+   * Use this to switch scroll behavior from "stick to the tail" to "keep the
+   * currently-voiced sentence in view". While a segment is active, the
+   * composable searches the owning message element for the segment text and
+   * centers it in the viewport instead of pinning the tail to the bottom.
+   *
+   * Pass `null` (or leave unset) to opt out of segment-follow entirely.
+   */
+  activeSegment?: Ref<ActiveChatSpeechSegment | null>
+  /**
+   * Resolves the rendered message key that owns a given speech segment.
+   *
+   * The active intent is not trivially correlated with a specific rendered
+   * message row — an intent's `ownerId` is typically a character card id, not
+   * a message id. Provide a resolver that returns the `data-chat-message-key`
+   * of the message whose rendered text is being voiced. Returning `null` or
+   * `undefined` falls back to the last message in the list (safe when only
+   * one assistant turn can be live at a time).
+   */
+  resolveMessageKeyForIntent?: (segment: ActiveChatSpeechSegment) => string | number | null | undefined
+  /**
+   * Returns the cumulative character offset already voiced for an intent.
+   *
+   * Use this together with `activeSegment` when long assistant messages can
+   * repeat the same phrase; the offset lets the text-search skip occurrences
+   * that were voiced by earlier segments. See `find-text-range-in-element`
+   * for the exact contract.
+   */
+  getIntentOffset?: (intentId: string) => number
 }
 
 /**
@@ -102,7 +145,7 @@ interface ChatHistoryScrollOptions<TMessage> {
  * - Follow a live conversation while the user is still reading at the tail.
  * - Stop automatic movement once the user starts inspecting older history.
  * - Distinguish a newly inserted tail message from streaming growth of the same tail.
- * - Align newly inserted messages to their top edge so long replies start in view.
+ * - Scroll to the bottom on both new insertions and streaming growth so the latest content is visible.
  *
  * When to use:
  *
@@ -128,6 +171,9 @@ export function useChatHistoryScroll<TMessage extends { role?: string }>({
   messages,
   getKey,
   shouldScroll,
+  activeSegment,
+  resolveMessageKeyForIntent,
+  getIntentOffset,
 }: ChatHistoryScrollOptions<TMessage>) {
   const isFollowingTail = shallowRef(true)
   const isFollowingConversation = shallowRef(true)
@@ -164,7 +210,7 @@ export function useChatHistoryScroll<TMessage extends { role?: string }>({
    * - Only follow the live edge while the user is already near the tail.
    * - Stop automatic movement while the user is inspecting older messages through
    *   scrolling, pointer interaction, focus, or text selection.
-   * - Scroll new messages to their top edge so the beginning of long replies stays visible.
+   * - Scroll to the bottom on new insertions so the tail of the latest message stays in view.
    *
    * This is especially important in Electron, where the chat list can be updated by
    * external synced sources and broadcast events, not just by the local input area.
@@ -242,18 +288,78 @@ export function useChatHistoryScroll<TMessage extends { role?: string }>({
     })
   }
 
-  function findMessageElementByKey(key: string | number) {
+  function resolveSegmentMessageElement(segment: ActiveChatSpeechSegment): HTMLElement | null {
     const container = getContainer()
     if (!container)
       return null
 
-    const messageElements = Array.from(container.querySelectorAll<HTMLElement>('[data-chat-message-key]'))
-    for (const element of messageElements) {
-      if (element.dataset.chatMessageKey === `${key}`)
-        return element
-    }
+    // Callers are expected to correlate an intent to its owning rendered
+    // message. When they cannot (or do not), fall back to the last message on
+    // screen, which matches the common case where only one assistant turn is
+    // voicing at a time.
+    const resolvedKey = resolveMessageKeyForIntent?.(segment) ?? getLastMessageKey()
+    if (resolvedKey == null)
+      return null
 
-    return null
+    // Escape CSS-special characters in the message key before injecting it
+    // into an attribute selector. Message keys are usually safe ids, but they
+    // can include characters like `:` or `.` when they originate from
+    // timestamps or composite strings.
+    const escape = (CSS as { escape?: (value: string) => string } | undefined)?.escape
+    const keyString = `${resolvedKey}`
+    const selector = escape
+      ? `[data-chat-message-key="${escape(keyString)}"]`
+      : `[data-chat-message-key="${keyString.replace(ATTRIBUTE_QUOTE_RE, '\\"')}"]`
+
+    return container.querySelector<HTMLElement>(selector)
+  }
+
+  /**
+   * Scroll so the currently-voiced segment text is roughly centered in the
+   * chat viewport. Returns whether a scroll actually happened so callers can
+   * decide to fall back to tail-follow.
+   */
+  function scrollActiveSegmentIntoView(): boolean {
+    const segment = activeSegment?.value
+    if (!segment)
+      return false
+
+    if (isInspectingOlderMessage.value || isSelectionInspectingHistory.value)
+      return false
+
+    const container = getContainer()
+    if (!container)
+      return false
+
+    const element = resolveSegmentMessageElement(segment)
+    if (!element)
+      return false
+
+    const offset = getIntentOffset?.(segment.intentId) ?? 0
+    const match = findTextRangeInElement(element, segment.text, offset)
+    if (!match)
+      return false
+
+    const rangeRect = match.range.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect()
+    if (rangeRect.height <= 0 && rangeRect.width <= 0)
+      return false
+
+    // Center the voiced text vertically in the viewport. Clamp to valid
+    // scroll bounds so we never overshoot past the top of the container or
+    // below its current scroll maximum.
+    const relativeTop = rangeRect.top - containerRect.top + container.scrollTop
+    const target = relativeTop - (container.clientHeight - rangeRect.height) / 2
+    const maxScroll = Math.max(0, container.scrollHeight - container.clientHeight)
+    const clamped = Math.max(0, Math.min(target, maxScroll))
+
+    isProgrammaticScroll.value = true
+    container.scrollTo({ top: clamped })
+    nextTick(() => {
+      isProgrammaticScroll.value = false
+      updateFollowingTail()
+    })
+    return true
   }
 
   function bindContainer(container: HTMLDivElement) {
@@ -289,6 +395,35 @@ export function useChatHistoryScroll<TMessage extends { role?: string }>({
       syncSelectionInspection()
     }
 
+    // NOTICE: Chat content height can keep growing after the initial DOM insert
+    // (async markdown rendering, nested component hydration, image/Live2D layout, etc.).
+    // A single scrollToBottom() at message-insert time captures only the height at that moment,
+    // so the tail of a long reply can end up below the viewport. While the user is still
+    // following the conversation, re-stick to the bottom on any content mutation.
+    const contentMutationObserver = typeof MutationObserver !== 'undefined'
+      ? new MutationObserver(() => {
+          if (isInspectingOlderMessage.value || isSelectionInspectingHistory.value)
+            return
+
+          // Prefer keeping the currently-voiced segment in view over pinning
+          // the tail; otherwise post-insert markdown hydration would yank the
+          // viewport back to the bottom in the middle of a long reply.
+          if (activeSegment?.value && scrollActiveSegmentIntoView())
+            return
+
+          if (!isFollowingConversation.value)
+            return
+
+          scrollToBottom()
+        })
+      : null
+
+    contentMutationObserver?.observe(container, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    })
+
     container.addEventListener('scroll', handleScroll, { passive: true })
     container.addEventListener('pointerover', handlePointerOver)
     container.addEventListener('pointerout', handlePointerOut)
@@ -297,6 +432,7 @@ export function useChatHistoryScroll<TMessage extends { role?: string }>({
     document.addEventListener('selectionchange', handleSelectionChange)
 
     stopListening.value = () => {
+      contentMutationObserver?.disconnect()
       container.removeEventListener('scroll', handleScroll)
       container.removeEventListener('pointerover', handlePointerOver)
       container.removeEventListener('pointerout', handlePointerOut)
@@ -390,20 +526,11 @@ export function useChatHistoryScroll<TMessage extends { role?: string }>({
       return
 
     await nextTick()
-
-    const target = findMessageElementByKey(messageKey)
     pendingScrollKey.value = null
-    if (!target)
-      return
 
-    // Align to the top of the new message so the start of a long reply remains visible.
-    isProgrammaticScroll.value = true
-    target.scrollIntoView({ block: 'start' })
-    nextTick(() => {
-      isProgrammaticScroll.value = false
-      isFollowingConversation.value = true
-      updateFollowingTail()
-    })
+    // Scroll to the bottom so the tail of the latest message stays visible.
+    // `scrollToBottom()` handles the programmatic-scroll flag and re-syncs follow state.
+    scrollToBottom()
   }, { flush: 'post' })
 
   watch(pendingStreamingFollow, async (shouldFollow) => {
@@ -412,8 +539,25 @@ export function useChatHistoryScroll<TMessage extends { role?: string }>({
 
     await nextTick()
     pendingStreamingFollow.value = false
+
+    // Segment-follow wins over tail-follow whenever a segment is voicing, so
+    // streaming growth under the current segment keeps the spoken text in view
+    // instead of dragging the viewport to the bottom.
+    if (activeSegment?.value && scrollActiveSegmentIntoView())
+      return
+
     scrollToBottom()
   }, { flush: 'post' })
+
+  if (activeSegment) {
+    watch(activeSegment, async (segment) => {
+      if (!segment)
+        return
+
+      await nextTick()
+      scrollActiveSegmentIntoView()
+    }, { flush: 'post' })
+  }
 
   onScopeDispose(() => {
     stopListening.value?.()

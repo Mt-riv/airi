@@ -34,6 +34,7 @@ import { useAiriCardStore } from '../../stores/modules'
 import { useSpeechStore } from '../../stores/modules/speech'
 import { useProvidersStore } from '../../stores/providers'
 import { useSettings } from '../../stores/settings'
+import { useSpeechPlaybackTrackerStore } from '../../stores/speech-playback-tracker'
 import { useSpeechRuntimeStore } from '../../stores/speech-runtime'
 import { shouldRunLive2dLipSyncLoop } from './runtime'
 
@@ -118,6 +119,7 @@ const speechStore = useSpeechStore()
 const { ssmlEnabled, activeSpeechProvider, activeSpeechModel, activeSpeechVoice, pitch } = storeToRefs(speechStore)
 const activeCardId = computed(() => activeCard.value?.name ?? 'default')
 const speechRuntimeStore = useSpeechRuntimeStore()
+const speechPlaybackTrackerStore = useSpeechPlaybackTrackerStore()
 
 const { currentMotion } = storeToRefs(useLive2d())
 
@@ -327,6 +329,7 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
 })
 
 void speechRuntimeStore.registerHost(speechPipeline)
+speechPlaybackTrackerStore.registerHost(playbackManager)
 
 speechPipeline.on('onSpecial', (segment) => {
   if (segment.special)

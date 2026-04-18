@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ChatAssistantMessage, ChatHistoryItem, ContextMessage } from '../../../../types/chat'
 
+import { storeToRefs } from 'pinia'
 import { computed, provide, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -8,6 +9,7 @@ import ChatAssistantItem from './assistant-item.vue'
 import ChatErrorItem from './error-item.vue'
 import ChatUserItem from './user-item.vue'
 
+import { useSpeechPlaybackTrackerStore } from '../../../../stores/speech-playback-tracker'
 import { useChatHistoryScroll } from '../composables/use-chat-history-scroll'
 import { chatScrollContainerKey } from '../constants'
 import { getChatHistoryItemKey } from '../utils'
@@ -65,10 +67,30 @@ const renderMessages = computed<ChatHistoryItem[]>(() => {
   return [...props.messages, streaming.value]
 })
 
+const speechPlaybackTrackerStore = useSpeechPlaybackTrackerStore()
+const { activeSegment } = storeToRefs(speechPlaybackTrackerStore)
+
+// The TTS pipeline does not know which rendered message is voicing; the
+// intent's `ownerId` is a character card id, not a message id. Only one
+// assistant turn can voice at a time, so resolve to the latest assistant
+// message in the currently rendered list.
+function resolveLatestAssistantMessageKey() {
+  const items = renderMessages.value
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (item?.role === 'assistant')
+      return getChatHistoryItemKey(item, index)
+  }
+  return null
+}
+
 useChatHistoryScroll({
   containerRef: chatHistoryRef,
   messages: renderMessages,
   getKey: getChatHistoryItemKey,
+  activeSegment,
+  resolveMessageKeyForIntent: () => resolveLatestAssistantMessageKey(),
+  getIntentOffset: intentId => speechPlaybackTrackerStore.getIntentOffset(intentId),
 })
 
 function emitCopyMessage(message: ChatHistoryItem, index: number) {
