@@ -86,9 +86,21 @@ function createLlmMarkerParser(options?: MarkerParserOptions) {
         if (!inTag) {
           const openTagIndex = buffer.indexOf(TAG_OPEN)
           if (openTagIndex < 0) {
-            if (buffer.length - tailLength >= minLiteralEmitLength) {
-              const emit = buffer.slice(0, -tailLength)
-              buffer = buffer.slice(-tailLength)
+            // NOTICE: JS strings are UTF-16; slicing by code-unit count can split
+            // an astral-plane codepoint (e.g. 🤔 = U+D83E U+DD14) into a lone
+            // high surrogate + lone low surrogate. Those get replaced by U+FFFD
+            // when passed through TextEncoder downstream in the TTS pipeline,
+            // which AivisSpeech/VOICEVOX synthesizes as an audible buzz. Back
+            // off one code unit if the emit boundary lands mid-pair.
+            let emitEnd = buffer.length - tailLength
+            if (emitEnd > 0) {
+              const lastCode = buffer.charCodeAt(emitEnd - 1)
+              if (lastCode >= 0xD800 && lastCode <= 0xDBFF)
+                emitEnd -= 1
+            }
+            if (emitEnd >= minLiteralEmitLength) {
+              const emit = buffer.slice(0, emitEnd)
+              buffer = buffer.slice(emitEnd)
               await onLiteral(emit)
             }
             break

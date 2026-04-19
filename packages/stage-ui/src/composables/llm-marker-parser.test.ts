@@ -286,4 +286,38 @@ describe('useLlmmarkerParser', async () => {
 
     expect(endText).toBe(fullText)
   })
+
+  // Regression: emoji on the astral plane (🤔 = U+1F914) is encoded as a
+  // surrogate pair in UTF-16. The parser used to emit literals with
+  // `buffer.slice(0, -tailLength)`, which could land mid-pair and hand a lone
+  // high surrogate to downstream consumers. Passing that through TextEncoder
+  // produces U+FFFD bytes, which AivisSpeech synthesizes as an audible buzz.
+  it('should not split a UTF-16 surrogate pair at the emit boundary', async () => {
+    const fullText = 'a🤔bcd'
+    const collectedLiterals: string[] = []
+
+    const parser = useLlmmarkerParser({
+      onLiteral(literal) {
+        collectedLiterals.push(literal)
+      },
+    })
+
+    await parser.consume(fullText)
+    await parser.end()
+
+    expect(collectedLiterals.join('')).toBe(fullText)
+    for (const literal of collectedLiterals) {
+      for (let i = 0; i < literal.length; i++) {
+        const code = literal.charCodeAt(i)
+        if (code >= 0xD800 && code <= 0xDBFF) {
+          const next = literal.charCodeAt(i + 1)
+          expect(next >= 0xDC00 && next <= 0xDFFF).toBe(true)
+          i += 1
+        }
+        else {
+          expect(code >= 0xDC00 && code <= 0xDFFF).toBe(false)
+        }
+      }
+    }
+  })
 })

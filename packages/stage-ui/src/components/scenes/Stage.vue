@@ -193,11 +193,21 @@ async function playFunction(item: Parameters<Parameters<typeof createPlaybackMan
   currentAudioSource.value = source
   source.buffer = item.audio
 
-  source.connect(audioContext.destination)
+  // NOTICE: insert a per-source GainNode to apply a short fade-in/out.
+  // TTS providers (VOICEVOX / AivisSpeech / ...) emit chunk WAVs whose first
+  // and last samples are not guaranteed to sit at zero. When chunk boundaries
+  // land near stripped characters (emoji, punctuation) the concatenated
+  // playback produces a DC step at the seam, which the audio engine renders
+  // as an audible click or — at rapid cadence — a "ジー" buzz. A ~8ms linear
+  // ramp is below the threshold of audibility for speech but large enough to
+  // erase the step discontinuity on every boundary.
+  const fadeGain = audioContext.createGain()
+  source.connect(fadeGain)
+  fadeGain.connect(audioContext.destination)
   if (audioAnalyser.value)
-    source.connect(audioAnalyser.value)
+    fadeGain.connect(audioAnalyser.value)
   if (lipSyncNode.value)
-    source.connect(lipSyncNode.value)
+    fadeGain.connect(lipSyncNode.value)
 
   return new Promise<void>((resolve) => {
     let settled = false
@@ -212,6 +222,7 @@ async function playFunction(item: Parameters<Parameters<typeof createPlaybackMan
       try {
         source.stop()
         source.disconnect()
+        fadeGain.disconnect()
       }
       catch {}
       if (currentAudioSource.value === source)
@@ -231,7 +242,19 @@ async function playFunction(item: Parameters<Parameters<typeof createPlaybackMan
     }
 
     try {
-      source.start(0)
+      const FADE_SECONDS = 0.008
+      const startTime = audioContext.currentTime
+      const duration = source.buffer?.duration ?? 0
+      // Buffer must be long enough to hold both fades; otherwise skip to
+      // avoid cross-ramps that would silence the middle of the chunk.
+      if (duration > FADE_SECONDS * 2) {
+        const endTime = startTime + duration
+        fadeGain.gain.setValueAtTime(0, startTime)
+        fadeGain.gain.linearRampToValueAtTime(1, startTime + FADE_SECONDS)
+        fadeGain.gain.setValueAtTime(1, endTime - FADE_SECONDS)
+        fadeGain.gain.linearRampToValueAtTime(0, endTime)
+      }
+      source.start(startTime)
     }
     catch {
       stopPlayback()

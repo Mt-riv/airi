@@ -11,6 +11,14 @@ export const TTS_SPECIAL_TOKEN = '\u2063'
 
 const regexpAnySingleDigit = /\d/
 
+// NOTICE: matches pictograph-class codepoints so we can drop them from the
+// TTS input. The existing `value.length > 1` skip only catches multi-code-unit
+// emojis (🌟 = surrogate pair, 👨‍👩‍👧 = ZWJ sequence). It misses BMP
+// pictographs like ✨ (U+2728), ★ (U+2605), ⚠ (U+26A0), which are a single
+// code unit and would otherwise reach VOICEVOX — where the phonemizer returns
+// malformed synthesis that plays back as a "ジー" buzz.
+const regexpEmojiPictograph = /\p{Extended_Pictographic}/u
+
 const keptPunctuations = new Set('?？!！')
 const hardPunctuations = new Set('.。?？!！…⋯～~\n\t\r')
 const softPunctuations = new Set(',，、–—:：;；《》「」')
@@ -67,7 +75,7 @@ export async function* chunkTtsInput(
   while (!current.done) {
     let value = current.value
 
-    if (value.length > 1) {
+    if (value.length > 1 || regexpEmojiPictograph.test(value)) {
       previousValue = value
       current = await iterator.next()
       continue
