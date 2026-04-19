@@ -51,6 +51,7 @@ import { getProviderValidationIntervalMs, listProviders as listDefinedProviders,
 import { getKokoroWorker } from '../workers/kokoro'
 import { getDefaultKokoroModel, KOKORO_MODELS, kokoroModelsToModelInfo } from '../workers/kokoro/constants'
 import { useAuthStore } from './auth'
+import { aivisCloudProvider } from './providers/aivis-cloud'
 import { createAliyunNLSProvider as createAliyunNlsStreamProvider } from './providers/aliyun/stream-transcription'
 import { convertProviderDefinitionsToMetadata } from './providers/converters'
 import { models as elevenLabsModels } from './providers/elevenlabs/list-models'
@@ -263,6 +264,7 @@ export const useProvidersStore = defineStore('providers', () => {
   const providerMetadata: Record<string, ProviderMetadata> = {
     'voicevox': voicevoxProvider,
     'aivisspeech': aivisSpeechProvider,
+    'aivis-cloud': aivisCloudProvider,
     'speech-noop': {
       id: 'speech-noop',
       category: 'speech',

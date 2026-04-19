@@ -1017,6 +1017,20 @@ pages:
       aivisspeech:
         title: AivisSpeech
         description: High-quality VOICEVOX-compatible Japanese TTS (local)
+      aivis-cloud:
+        title: Aivis Cloud
+        description: Managed cloud API for AivisSpeech models (api.aivis-project.com)
+        fields:
+          field:
+            model-uuid:
+              label: AIVM Model UUID
+              description: UUID of the AIVM model to synthesize with. Speakers and styles are loaded from the selected model.
+            emotional-intensity:
+              label: Emotional Intensity
+              description: Style expression strength (0.0–2.0, default 1.0).
+            output-format:
+              label: Audio Format
+              description: Response audio container (default MP3).
       volcengine:
         description: volcengine.com
         fields:

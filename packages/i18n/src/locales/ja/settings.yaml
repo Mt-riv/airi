@@ -970,6 +970,20 @@ pages:
       aivisspeech:
         title: AivisSpeech
         description: VOICEVOX 互換の高品質日本語 TTS（ローカル）
+      aivis-cloud:
+        title: Aivis Cloud
+        description: AivisSpeech のクラウド版 API（api.aivis-project.com）
+        fields:
+          field:
+            model-uuid:
+              label: AIVM モデル UUID
+              description: 合成に利用するモデルの UUID。指定したモデル配下のスピーカー／スタイルが音声リストに展開されます。
+            emotional-intensity:
+              label: 感情表現の強さ
+              description: スタイルの表現強度（0.0〜2.0、既定 1.0）
+            output-format:
+              label: 音声フォーマット
+              description: 受け取るオーディオの形式（既定は MP3）
       volcengine:
         description: volcengine.com
         fields:

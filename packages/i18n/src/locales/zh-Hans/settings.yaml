@@ -931,6 +931,20 @@ pages:
       aivisspeech:
         title: AivisSpeech
         description: 兼容 VOICEVOX 的高品质日语 TTS（本地）
+      aivis-cloud:
+        title: Aivis Cloud
+        description: AivisSpeech 的云端 API（api.aivis-project.com）
+        fields:
+          field:
+            model-uuid:
+              label: AIVM 模型 UUID
+              description: 用于合成的模型 UUID，所选模型下的说话人与风格会被展开为可用声线。
+            emotional-intensity:
+              label: 情感强度
+              description: 风格表达强度（0.0–2.0，默认 1.0）
+            output-format:
+              label: 音频格式
+              description: 响应音频格式（默认 MP3）
       volcengine:
         description: volcengine.com
         fields:
