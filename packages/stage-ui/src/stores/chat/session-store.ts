@@ -4,6 +4,9 @@ import type { ChatSessionMeta, ChatSessionRecord, ChatSessionsExport, ChatSessio
 import { nanoid } from 'nanoid'
 import { defineStore, storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+import SystemPromptV2 from '../../constants/prompts/system-v2'
 
 import { chatSessionsRepo } from '../../database/repos/chat-sessions.repo'
 import { useAuthStore } from '../auth'
@@ -11,6 +14,7 @@ import { useAiriCardStore } from '../modules/airi-card'
 import { mergeLoadedSessionMessages } from './session-message-merge'
 
 export const useChatSessionStore = defineStore('chat-session', () => {
+  const { t } = useI18n()
   const { userId } = storeToRefs(useAuthStore())
   const { activeCardId, systemPrompt } = storeToRefs(useAiriCardStore())
 
@@ -69,8 +73,17 @@ export const useChatSessionStore = defineStore('chat-session', () => {
     return next
   }
 
+  // NOTICE: Always prepend the ACT/emotion baseline prompt so emotion-driven
+  // Live2D motions fire regardless of the character card. Custom cards
+  // (e.g. user-authored ones) often omit the `<|ACT:{next:"..."}|>` format
+  // instructions baked into the default card's description, which previously
+  // meant the LLM returned plain text and no emotion motions triggered.
+  function actBaselineSystemPrompt() {
+    return `${SystemPromptV2(t('base.prompt.prefix'), t('base.prompt.suffix')).content}\n`
+  }
+
   function generateInitialMessageFromPrompt(prompt: string) {
-    const content = codeBlockSystemPrompt + mathSyntaxSystemPrompt + prompt
+    const content = actBaselineSystemPrompt() + codeBlockSystemPrompt + mathSyntaxSystemPrompt + prompt
 
     return {
       role: 'system',
