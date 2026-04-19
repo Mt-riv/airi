@@ -116,7 +116,17 @@ const live2dLipSyncOptions: Live2DLipSyncOptions = { mouthUpdateIntervalMs: 50, 
 
 const { activeCard } = storeToRefs(useAiriCardStore())
 const speechStore = useSpeechStore()
-const { ssmlEnabled, activeSpeechProvider, activeSpeechModel, activeSpeechVoice, pitch } = storeToRefs(speechStore)
+const {
+  ssmlEnabled,
+  activeSpeechProvider,
+  activeSpeechModel,
+  activeSpeechVoice,
+  pitch,
+  voicevoxSpeedScale,
+  voicevoxPitchScale,
+  voicevoxIntonationScale,
+  voicevoxVolumeScale,
+} = storeToRefs(speechStore)
 const activeCardId = computed(() => activeCard.value?.name ?? 'default')
 const speechRuntimeStore = useSpeechRuntimeStore()
 const speechPlaybackTrackerStore = useSpeechPlaybackTrackerStore()
@@ -304,13 +314,24 @@ const speechPipeline = createSpeechPipeline<AudioBuffer>({
     if (!model || !voice)
       return null
 
-    const input = ssmlEnabled.value
+    // NOTICE: only wrap in SSML when the active provider actually understands it.
+    // Engines that don't (VOICEVOX, AivisSpeech, ...) would otherwise transcribe
+    // the XML tags and xmlns URL verbatim, producing audible garbage.
+    const input = ssmlEnabled.value && speechStore.supportsSSML
       ? speechStore.generateSSML(request.text, voice, { ...providerConfig, pitch: pitch.value })
       : request.text
 
+    const effectiveProviderConfig: Record<string, unknown> = { ...providerConfig }
+    if (activeSpeechProvider.value === 'voicevox' || activeSpeechProvider.value === 'aivisspeech') {
+      effectiveProviderConfig.speedScale = voicevoxSpeedScale.value
+      effectiveProviderConfig.pitchScale = voicevoxPitchScale.value
+      effectiveProviderConfig.intonationScale = voicevoxIntonationScale.value
+      effectiveProviderConfig.volumeScale = voicevoxVolumeScale.value
+    }
+
     try {
       const res = await generateSpeech({
-        ...provider.speech(model, providerConfig),
+        ...provider.speech(model, effectiveProviderConfig),
         input,
         voice: voice.id,
       })

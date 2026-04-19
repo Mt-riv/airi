@@ -7,6 +7,8 @@ import {
   VOICEVOX_DEFAULT_BASE_URL,
 } from './speech'
 
+export type { VoicevoxSpeechExtraOptions } from './types'
+
 const TRAILING_SLASHES = /\/+$/
 
 /**

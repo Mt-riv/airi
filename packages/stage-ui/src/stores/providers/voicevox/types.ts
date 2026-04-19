@@ -29,3 +29,20 @@ export interface VoicevoxAudioQuery {
   outputStereo: boolean
   [key: string]: unknown
 }
+
+/**
+ * Synthesis-time knobs for VOICEVOX / AivisSpeech. Field names match the
+ * AudioQuery JSON (speedScale / pitchScale / ...) so the fetch adapter can
+ * merge them verbatim before POST /synthesis.
+ *
+ * All fields are optional — undefined means "keep the engine default from
+ * the /audio_query response".
+ */
+export interface VoicevoxSpeechExtraOptions {
+  speedScale?: number
+  pitchScale?: number
+  intonationScale?: number
+  volumeScale?: number
+  prePhonemeLength?: number
+  postPhonemeLength?: number
+}

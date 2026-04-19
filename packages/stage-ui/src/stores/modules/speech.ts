@@ -33,6 +33,13 @@ export const useSpeechStore = defineStore('speech', () => {
   const pitch = useLocalStorageManualReset<number>('settings/speech/pitch', 0)
   const rate = useLocalStorageManualReset<number>('settings/speech/rate', 1)
   const ssmlEnabled = useLocalStorageManualReset<boolean>('settings/speech/ssml-enabled', false)
+
+  // VOICEVOX / AivisSpeech synthesis knobs. Names match the AudioQuery JSON
+  // fields so they can be forwarded verbatim to the engine's /synthesis call.
+  const voicevoxSpeedScale = useLocalStorageManualReset<number>('settings/speech/voicevox/speed-scale', 1.0)
+  const voicevoxPitchScale = useLocalStorageManualReset<number>('settings/speech/voicevox/pitch-scale', 0.0)
+  const voicevoxIntonationScale = useLocalStorageManualReset<number>('settings/speech/voicevox/intonation-scale', 1.0)
+  const voicevoxVolumeScale = useLocalStorageManualReset<number>('settings/speech/voicevox/volume-scale', 1.0)
   const isLoadingSpeechProviderVoices = refManualReset<boolean>(false)
   const speechProviderError = refManualReset<string | null>(null)
   const availableVoices = refManualReset<Record<string, VoiceInfo[]>>(() => ({}))
@@ -291,6 +298,10 @@ export const useSpeechStore = defineStore('speech', () => {
     pitch.reset()
     rate.reset()
     ssmlEnabled.reset()
+    voicevoxSpeedScale.reset()
+    voicevoxPitchScale.reset()
+    voicevoxIntonationScale.reset()
+    voicevoxVolumeScale.reset()
     selectedLanguage.reset()
     modelSearchQuery.reset()
     availableVoices.reset()
@@ -308,6 +319,10 @@ export const useSpeechStore = defineStore('speech', () => {
     pitch,
     rate,
     ssmlEnabled,
+    voicevoxSpeedScale,
+    voicevoxPitchScale,
+    voicevoxIntonationScale,
+    voicevoxVolumeScale,
     selectedLanguage,
     isLoadingSpeechProviderVoices,
     speechProviderError,

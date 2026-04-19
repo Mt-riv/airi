@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SpeechProvider } from '@xsai-ext/providers/utils'
+import type { SpeechProviderWithExtraOptions } from '@xsai-ext/providers/utils'
 
 import {
   SpeechPlayground,
@@ -7,8 +7,9 @@ import {
 } from '@proj-airi/stage-ui/components'
 import { useSpeechStore } from '@proj-airi/stage-ui/stores/modules/speech'
 import { useProvidersStore } from '@proj-airi/stage-ui/stores/providers'
+import { FieldRange } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 const speechStore = useSpeechStore()
 const providersStore = useProvidersStore()
@@ -16,6 +17,11 @@ const { providers } = storeToRefs(providersStore)
 
 const providerId = 'voicevox'
 const defaultModel = 'voicevox'
+
+const speedScale = ref<number>(1.0)
+const pitchScale = ref<number>(0.0)
+const intonationScale = ref<number>(1.0)
+const volumeScale = ref<number>(1.0)
 
 const availableVoices = computed(() => {
   return speechStore.availableVoices[providerId] || []
@@ -39,7 +45,7 @@ onMounted(async () => {
 })
 
 async function handleGenerateSpeech(input: string, voiceId: string, _useSSML: boolean) {
-  const provider = await providersStore.getProviderInstance<SpeechProvider<string>>(providerId)
+  const provider = await providersStore.getProviderInstance(providerId) as SpeechProviderWithExtraOptions<string, Record<string, unknown>>
   if (!provider) {
     throw new Error('Failed to initialize VOICEVOX speech provider')
   }
@@ -51,7 +57,13 @@ async function handleGenerateSpeech(input: string, voiceId: string, _useSSML: bo
     defaultModel,
     input,
     voiceId,
-    providerConfig,
+    {
+      ...providerConfig,
+      speedScale: speedScale.value,
+      pitchScale: pitchScale.value,
+      intonationScale: intonationScale.value,
+      volumeScale: volumeScale.value,
+    },
   )
 }
 </script>
@@ -61,6 +73,35 @@ async function handleGenerateSpeech(input: string, voiceId: string, _useSSML: bo
     :provider-id="providerId"
     :default-model="defaultModel"
   >
+    <template #voice-settings>
+      <div flex="~ col gap-4">
+        <FieldRange
+          v-model="speedScale"
+          label="Speed"
+          description="Playback speed (speedScale). 1.0 is the engine default."
+          :min="0.5" :max="2.0" :step="0.01"
+        />
+        <FieldRange
+          v-model="pitchScale"
+          label="Pitch"
+          description="Pitch offset (pitchScale). 0.0 is the engine default."
+          :min="-0.15" :max="0.15" :step="0.01"
+        />
+        <FieldRange
+          v-model="intonationScale"
+          label="Intonation"
+          description="Intonation strength (intonationScale). 1.0 is the engine default."
+          :min="0.0" :max="2.0" :step="0.01"
+        />
+        <FieldRange
+          v-model="volumeScale"
+          label="Volume"
+          description="Output volume (volumeScale). 1.0 is the engine default."
+          :min="0.0" :max="2.0" :step="0.01"
+        />
+      </div>
+    </template>
+
     <template #playground>
       <SpeechPlayground
         :available-voices="availableVoices"

@@ -21,7 +21,7 @@ import {
 } from '@proj-airi/ui'
 import { generateSpeech } from '@xsai/generate-speech'
 import { storeToRefs } from 'pinia'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
 
@@ -35,6 +35,10 @@ const {
   activeSpeechVoice,
   activeSpeechVoiceId,
   pitch,
+  voicevoxSpeedScale,
+  voicevoxPitchScale,
+  voicevoxIntonationScale,
+  voicevoxVolumeScale,
   isLoadingSpeechProviderVoices,
   supportsModelListing,
   providerModels,
@@ -45,6 +49,10 @@ const {
   ssmlEnabled,
   availableVoices,
 } = storeToRefs(speechStore)
+
+const isVoicevoxFamily = computed(() => {
+  return activeSpeechProvider.value === 'voicevox' || activeSpeechProvider.value === 'aivisspeech'
+})
 
 const { trackProviderClick } = useAnalytics()
 
@@ -172,8 +180,16 @@ async function generateTestSpeech() {
         ? speechStore.generateSSML(testText.value, voice, { ...providerConfig, pitch: pitch.value })
         : testText.value
 
+    const effectiveProviderConfig: Record<string, unknown> = { ...providerConfig }
+    if (isVoicevoxFamily.value) {
+      effectiveProviderConfig.speedScale = voicevoxSpeedScale.value
+      effectiveProviderConfig.pitchScale = voicevoxPitchScale.value
+      effectiveProviderConfig.intonationScale = voicevoxIntonationScale.value
+      effectiveProviderConfig.volumeScale = voicevoxVolumeScale.value
+    }
+
     const response = await generateSpeech({
-      ...provider.speech(model, providerConfig),
+      ...provider.speech(model, effectiveProviderConfig),
       input,
       voice: voice.id,
     })
@@ -521,7 +537,34 @@ function handleDeleteProvider(providerId: string) {
 
           <!-- Voice parameters -->
           <div flex="~ col gap-4">
+            <template v-if="isVoicevoxFamily">
+              <FieldRange
+                v-model="voicevoxSpeedScale"
+                label="Speed"
+                description="Playback speed (speedScale). 1.0 is the engine default."
+                :min="0.5" :max="2.0" :step="0.01"
+              />
+              <FieldRange
+                v-model="voicevoxPitchScale"
+                label="Pitch"
+                description="Pitch offset (pitchScale). 0.0 is the engine default."
+                :min="-0.15" :max="0.15" :step="0.01"
+              />
+              <FieldRange
+                v-model="voicevoxIntonationScale"
+                label="Intonation"
+                description="Intonation strength (intonationScale). 1.0 is the engine default."
+                :min="0.0" :max="2.0" :step="0.01"
+              />
+              <FieldRange
+                v-model="voicevoxVolumeScale"
+                label="Volume"
+                description="Output volume (volumeScale). 1.0 is the engine default."
+                :min="0.0" :max="2.0" :step="0.01"
+              />
+            </template>
             <FieldRange
+              v-else
               v-model="pitch"
               label="Pitch"
               description="Tune the pitch of the voice"
