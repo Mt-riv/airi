@@ -3,7 +3,7 @@ import type { ModelSettingsRuntimeSnapshot } from './runtime'
 
 import { defaultModelParameters, useExpressionStore, useLive2d } from '@proj-airi/stage-ui-live2d'
 import { OPFSCache } from '@proj-airi/stage-ui-live2d/utils/opfs-loader'
-import { Button, Checkbox, FieldCheckbox, FieldCombobox, FieldRange, SelectTab } from '@proj-airi/ui'
+import { Button, Checkbox, FieldCheckbox, FieldRange, SelectTab } from '@proj-airi/ui'
 import { storeToRefs } from 'pinia'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -43,6 +43,7 @@ const {
   position,
   modelParameters,
   currentMotion,
+  idleMotionSelections,
 } = storeToRefs(live2d)
 
 const expressionStore = useExpressionStore()
@@ -62,14 +63,19 @@ function isGroupActive(group: { parameters: { parameterId: string, value: number
   })
 }
 
-const selectedRuntimeMotion = ref<string>('')
 const runtimeMotions = ref<Array<{ name: string, displayPath: string, group: string, index: number }>>([])
 const canExtractColors = computed(() => props.runtimeSnapshot.canCapturePreview)
-const runtimeMotionOptions = computed(() => runtimeMotions.value.map(motion => ({
-  label: motion.name,
-  value: motion.displayPath,
-  description: motion.displayPath,
-})))
+// Group runtime motions by their group name (e.g. Idle/Happy/...) so the
+// checklist renders motions together with their group header.
+const runtimeMotionsByGroup = computed(() => {
+  const grouped = new Map<string, Array<{ name: string, displayPath: string, group: string, index: number }>>()
+  for (const motion of runtimeMotions.value) {
+    const list = grouped.get(motion.group) ?? []
+    list.push(motion)
+    grouped.set(motion.group, list)
+  }
+  return grouped
+})
 const fpsOptions = computed(() => [
   { value: 0, label: t('settings.live2d.fps.options.unlimited') },
   { value: 60, label: '60' },
@@ -93,13 +99,44 @@ const llmModeOptions = [
   { value: 'custom', label: 'Custom' },
 ]
 
-// Get available runtime motions from the model
-onMounted(() => {
-  // Restore selected motion
-  const savedPath = localStorage.getItem('selected-runtime-motion')
-  if (savedPath) {
-    selectedRuntimeMotion.value = savedPath
+function isIdleMotionSelected(group: string, index: number): boolean {
+  return idleMotionSelections.value.some(sel => sel.group === group && sel.index === index)
+}
+
+function toggleIdleMotion(group: string, index: number, checked: boolean) {
+  const existing = idleMotionSelections.value.some(sel => sel.group === group && sel.index === index)
+  if (checked && !existing) {
+    idleMotionSelections.value = [...idleMotionSelections.value, { group, index }]
   }
+  else if (!checked && existing) {
+    idleMotionSelections.value = idleMotionSelections.value.filter(sel => sel.group !== group || sel.index !== index)
+  }
+
+  // Kick the first selection so the user sees feedback immediately. Subsequent
+  // rotation is driven by Model.vue's motionFinish handler.
+  if (checked) {
+    live2dIdleAnimationEnabled.value = true
+    currentMotion.value = { group, index }
+  }
+}
+
+onMounted(() => {
+  // Migrate the legacy single-selection keys into the new array-backed store on
+  // first run, so users with an existing saved idle motion keep their pick.
+  if (idleMotionSelections.value.length === 0) {
+    const legacyGroup = localStorage.getItem('selected-runtime-motion-group')
+    const legacyIndex = localStorage.getItem('selected-runtime-motion-index')
+    if (legacyGroup && legacyIndex != null) {
+      const parsed = Number.parseInt(legacyIndex)
+      if (Number.isFinite(parsed)) {
+        idleMotionSelections.value = [{ group: legacyGroup, index: parsed }]
+      }
+    }
+  }
+  // Clear legacy keys once they've been migrated (or on a fresh install).
+  localStorage.removeItem('selected-runtime-motion')
+  localStorage.removeItem('selected-runtime-motion-group')
+  localStorage.removeItem('selected-runtime-motion-index')
 })
 
 // Function to reset all parameters to default values
@@ -117,31 +154,6 @@ async function clearModelCache() {
   finally {
     clearingCache.value = false
   }
-}
-
-function handleMotionSelect(selectedMotionPath: string | number | undefined) {
-  if (typeof selectedMotionPath !== 'string') {
-    return
-  }
-
-  const motion = runtimeMotions.value.find(item => item.displayPath === selectedMotionPath)
-  if (!motion) {
-    return
-  }
-
-  localStorage.setItem('selected-runtime-motion', motion.displayPath)
-  localStorage.setItem('selected-runtime-motion-group', motion.group)
-  localStorage.setItem('selected-runtime-motion-index', motion.index.toString())
-
-  // Enable idle animation
-  live2dIdleAnimationEnabled.value = true
-
-  // Set the current motion to the selected runtime motion
-  currentMotion.value = { group: motion.group, index: motion.index }
-
-  console.info('Selected runtime motion:', motion.name)
-  console.info('Full path:', motion.displayPath)
-  console.info('Group:', motion.group, 'Index:', motion.index)
 }
 
 // async function patchMotionMap(source: File, motionMap: Record<string, string>): Promise<File> {
@@ -316,19 +328,52 @@ function handleMotionSelect(selectedMotionPath: string | number | undefined) {
       :label="t('settings.live2d.render-scale.title')"
     />
 
-    <FieldCombobox
-      v-model="selectedRuntimeMotion"
-      label="Idle Animation"
-      :options="runtimeMotionOptions"
-      placeholder="Select Motion"
-      :select-class="['w-full']"
-      :content-min-width="256"
-      @update:model-value="handleMotionSelect"
-    >
-      <template #empty>
+    <div flex flex-col gap-2>
+      <div flex items-baseline justify-between>
+        <div>
+          <div text-sm font-medium>
+            Idle Animations
+          </div>
+          <div text-xs text-neutral-500 dark:text-neutral-400>
+            Select one or more motions. Airi will loop through them at random while idle.
+          </div>
+        </div>
+        <div v-if="idleMotionSelections.length > 0" text-xs text-neutral-500 dark:text-neutral-400>
+          {{ idleMotionSelections.length }} selected
+        </div>
+      </div>
+      <div
+        v-if="runtimeMotions.length === 0"
+        py-2 text-sm text-neutral-500 dark:text-neutral-400
+      >
         No motions available
-      </template>
-    </FieldCombobox>
+      </div>
+      <div
+        v-else
+        :class="['flex flex-col gap-3', 'max-h-64 overflow-y-auto', 'rounded-md border border-neutral-200 dark:border-neutral-700', 'px-3 py-2']"
+      >
+        <div
+          v-for="[groupName, motions] in runtimeMotionsByGroup"
+          :key="groupName"
+          flex flex-col gap-1
+        >
+          <div text-xs text-neutral-500 font-semibold dark:text-neutral-400>
+            {{ groupName }}
+          </div>
+          <div
+            v-for="motion in motions"
+            :key="motion.displayPath"
+            flex items-center justify-between gap-2
+          >
+            <span flex-1 truncate text-sm font-mono>{{ motion.name }}</span>
+            <Checkbox
+              :model-value="isIdleMotionSelected(motion.group, motion.index)"
+              @update:model-value="(v: boolean) => toggleIdleMotion(motion.group, motion.index, v)"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
 
     <label class="flex flex-col gap-4">
       <div :class="['flex items-center gap-2', 'flex-row']">

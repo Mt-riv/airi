@@ -184,6 +184,7 @@ const {
   availableMotions,
   motionMap,
   modelParameters,
+  idleMotionSelections,
 } = storeToRefs(live2dStore)
 
 const themeColorsHue = toRef(() => props.themeColorsHue)
@@ -205,6 +206,21 @@ const savedEyeBlink = shallowRef<any>(null)
 const savedExpressionManager = shallowRef<any>(null)
 
 const localCurrentMotion = ref<{ group: string, index: number }>({ group: 'Idle', index: 0 })
+
+// Pick a random entry from the user's idle motion selections. Avoids repeating
+// the most recently played motion when two or more selections are available.
+function pickRandomIdleSelection(): { group: string, index: number } | null {
+  const selections = idleMotionSelections.value
+  if (selections.length === 0)
+    return null
+  if (selections.length === 1)
+    return selections[0]
+
+  const last = localCurrentMotion.value
+  const candidates = selections.filter(sel => sel.group !== last.group || sel.index !== last.index)
+  const pool = candidates.length > 0 ? candidates : selections
+  return pool[Math.floor(Math.random() * pool.length)]
+}
 const beatSync = createBeatSyncController({
   baseAngles: () => ({
     x: modelParameters.value.angleX,
@@ -313,31 +329,25 @@ async function loadModel() {
       })) || []))
       .filter(Boolean)
 
-    // Check if user has selected a runtime motion to play as idle
-    const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
-    const selectedMotionIndex = localStorage.getItem('selected-runtime-motion-index')
+    // NOTICE: Some motion3.json files declare `Meta.IsLooping: true`, which makes
+    // CubismMotion loop natively and never emit `motionFinish`. We drive all
+    // rotation/return-to-idle via the motionFinish handler below, so force the
+    // loop flag off on every loaded motion.
+    Object.values(motionManager.motionGroups as Record<number, any[]>).forEach((group) => {
+      group?.forEach((motion: any) => {
+        motion?.setIsLoop?.(false)
+        if (motion && motion._loop !== undefined)
+          motion._loop = false
+      })
+    })
 
-    // Configure the selected motion to loop
-    if (selectedMotionGroup !== null && selectedMotionIndex) {
-      const groupIndex = (motionManager.groups as Record<string, any>)[selectedMotionGroup]
-      if (groupIndex !== undefined && motionManager.motionGroups[groupIndex]) {
-        const motionIndex = Number.parseInt(selectedMotionIndex)
-        const motion = motionManager.motionGroups[groupIndex][motionIndex]
-        if (motion && motion._looper) {
-          // Force the motion to loop
-          motion._looper.loopDuration = 0 // 0 means infinite loop
-          console.info('Configured motion to loop infinitely:', selectedMotionGroup, motionIndex)
-        }
-      }
-    }
-
-    if (selectedMotionGroup !== null && selectedMotionIndex && live2dIdleAnimationEnabled.value) {
+    if (idleMotionSelections.value.length > 0 && live2dIdleAnimationEnabled.value) {
       setTimeout(() => {
-        console.info('Playing selected runtime motion:', selectedMotionGroup, selectedMotionIndex)
-        currentMotion.value = {
-          group: selectedMotionGroup,
-          index: Number.parseInt(selectedMotionIndex),
-        }
+        const next = pickRandomIdleSelection()
+        if (!next)
+          return
+        console.info('Playing idle motion:', next.group, next.index)
+        currentMotion.value = { group: next.group, index: next.index }
       }, 300)
     }
 
@@ -388,22 +398,20 @@ async function loadModel() {
       localCurrentMotion.value = { group, index }
     })
 
-    // Listen for motion finish to restart runtime motion for looping
+    // When any motion finishes (idle rotation ending, or a response emotion
+    // motion ending), pick a random idle motion from the user's selections so
+    // we always return to an idle loop.
     motionManager.on('motionFinish', () => {
-      const selectedMotionGroup = localStorage.getItem('selected-runtime-motion-group')
-      const selectedMotionIndex = localStorage.getItem('selected-runtime-motion-index')
+      if (!live2dIdleAnimationEnabled.value)
+        return
 
-      if (selectedMotionGroup !== null && selectedMotionIndex && live2dIdleAnimationEnabled.value) {
-        // Restart the selected runtime motion immediately for seamless looping
-        console.info('Motion finished, restarting runtime motion:', selectedMotionGroup, selectedMotionIndex)
-        // Use requestAnimationFrame to restart on the next frame for smooth transition
-        requestAnimationFrame(() => {
-          currentMotion.value = {
-            group: selectedMotionGroup,
-            index: Number.parseInt(selectedMotionIndex),
-          }
-        })
-      }
+      const next = pickRandomIdleSelection()
+      if (!next)
+        return
+
+      requestAnimationFrame(() => {
+        currentMotion.value = { group: next.group, index: next.index }
+      })
     })
 
     // Apply all stored parameters to the model

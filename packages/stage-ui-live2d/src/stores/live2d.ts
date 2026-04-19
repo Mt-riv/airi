@@ -67,6 +67,10 @@ export const useLive2d = defineStore('live2d', () => {
   const motionMap = useLocalStorageManualReset<Record<string, string>>('settings/live2d/motion-map', {})
   const scale = useLocalStorageManualReset('settings/live2d/scale', 1)
 
+  // User-selected idle motions. When non-empty, Model.vue rotates through these
+  // at random while no emotion/response motion is playing.
+  const idleMotionSelections = useLocalStorageManualReset<{ group: string, index: number }[]>('settings/live2d/idle-motion-selections', () => [])
+
   // Live2D model parameters
   const modelParameters = useLocalStorageManualReset<Record<string, number>>('settings/live2d/parameters', defaultModelParameters)
 
@@ -77,6 +81,7 @@ export const useLive2d = defineStore('live2d', () => {
     motionMap.reset()
     scale.reset()
     modelParameters.reset()
+    idleMotionSelections.reset()
     shouldUpdateView()
   }
 
@@ -88,6 +93,7 @@ export const useLive2d = defineStore('live2d', () => {
     motionMap,
     scale,
     modelParameters,
+    idleMotionSelections,
 
     onShouldUpdateView,
     shouldUpdateView,
