@@ -1,5 +1,5 @@
 import type { Locale } from '@intlify/core'
-import type { CronJob } from '@proj-airi/cron-runtime'
+import type { CronJob, CronJobInput } from '@proj-airi/cron-runtime'
 import type { ServerOptions } from '@proj-airi/server-runtime/server'
 import type { SkillDefinition } from '@proj-airi/skill-registry'
 import type { ServerChannelQrPayload } from '@proj-airi/stage-shared/server-channel-qr'
@@ -16,11 +16,16 @@ import type {
 
 import type { AgentRuntimeStatus } from './agent-runtime'
 import type {
+  ClaudeCodeAttachSessionBySlugInput,
   ClaudeCodeAttachSessionInput,
   ClaudeCodeCheckBinaryInput,
   ClaudeCodeCheckBinaryResult,
   ClaudeCodeDetachSessionInput,
+  ClaudeCodeListAllProjectsInput,
+  ClaudeCodeListAllSessionsInput,
   ClaudeCodeListSessionsInput,
+  ClaudeCodeProjectSessionsSummary,
+  ClaudeCodeProjectSummary,
   ClaudeCodeResolveSlugInput,
   ClaudeCodeResolveSlugResult,
   ClaudeCodeSendPromptInput,
@@ -321,6 +326,17 @@ export const claudeCodeStreamEvent = defineEventa<ClaudeCodeStreamEventPayload>(
 // Phase 5 — configuration probes surfaced by the settings page validators.
 export const claudeCodeCheckBinary = defineInvokeEventa<ClaudeCodeCheckBinaryResult, ClaudeCodeCheckBinaryInput>('eventa:invoke:electron:claude-code:check-binary')
 export const claudeCodeResolveSlug = defineInvokeEventa<ClaudeCodeResolveSlugResult, ClaudeCodeResolveSlugInput>('eventa:invoke:electron:claude-code:resolve-slug')
+// All-projects speech mode — see P3-A in PLAN.md. The renderer uses these two
+// contracts to enumerate every slug directory under `~/.claude/projects/` and
+// attach to the latest session in each without having to know the original
+// project cwd (which is irreversibly lost in the slug mapping).
+export const claudeCodeListAllProjects = defineInvokeEventa<ClaudeCodeProjectSummary[], ClaudeCodeListAllProjectsInput>('eventa:invoke:electron:claude-code:list-all-projects')
+export const claudeCodeAttachSessionBySlug = defineInvokeEventa<ClaudeCodeSessionMeta, ClaudeCodeAttachSessionBySlugInput>('eventa:invoke:electron:claude-code:attach-session-by-slug')
+// Phase 2 manual-select mode — returns every slug's full session list so the
+// settings UI can render a cross-project checkbox picker. Sessions are sorted
+// newest-first per slug; slugs themselves are sorted by their most recent
+// session so active projects float to the top.
+export const claudeCodeListAllSessions = defineInvokeEventa<ClaudeCodeProjectSessionsSummary[], ClaudeCodeListAllSessionsInput>('eventa:invoke:electron:claude-code:list-all-sessions')
 
 // Agent runtime integration — see Phase OC-AG-4/6 in PLAN.md.
 // Option A: main owns SkillRegistry + CronScheduler; the renderer owns the
@@ -333,7 +349,7 @@ export const agentRuntimeSetEnabled = defineInvokeEventa<AgentRuntimeStatus, { e
 export const agentRuntimeListSkills = defineInvokeEventa<SkillDefinition[]>('eventa:invoke:electron:agent-runtime:list-skills')
 export const agentRuntimeReloadSkills = defineInvokeEventa<SkillDefinition[]>('eventa:invoke:electron:agent-runtime:reload-skills')
 export const agentRuntimeListCronJobs = defineInvokeEventa<CronJob[]>('eventa:invoke:electron:agent-runtime:list-cron-jobs')
-export const agentRuntimeAddCronJob = defineInvokeEventa<CronJob, Omit<CronJob, 'nextRunAt' | 'lastRunAt'>>('eventa:invoke:electron:agent-runtime:add-cron-job')
+export const agentRuntimeAddCronJob = defineInvokeEventa<CronJob, CronJobInput>('eventa:invoke:electron:agent-runtime:add-cron-job')
 export const agentRuntimeRemoveCronJob = defineInvokeEventa<{ ok: boolean }, { id: string }>('eventa:invoke:electron:agent-runtime:remove-cron-job')
 export const agentRuntimeToggleCronJob = defineInvokeEventa<CronJob, { id: string, enabled: boolean }>('eventa:invoke:electron:agent-runtime:toggle-cron-job')
 

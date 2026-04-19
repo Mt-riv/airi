@@ -4,6 +4,14 @@ import { errorMessageFrom } from '@moeru/std'
 import { CronExpressionParser } from 'cron-parser'
 
 function computeNextRunAt(job: CronJob, now: number): Date | null {
+  if (job.kind === 'oneshot') {
+    const t = Date.parse(job.fireAt)
+    if (!Number.isFinite(t) || t <= now) {
+      return null
+    }
+    return new Date(t)
+  }
+
   try {
     const expr = CronExpressionParser.parse(job.cron, {
       currentDate: new Date(now),
@@ -65,13 +73,21 @@ export function createCronScheduler(options: CreateSchedulerOptions): CronSchedu
         return
       }
 
-      const updatedJob: CronJob = {
-        ...cache[jobIndex],
+      const current = cache[jobIndex]
+      const firedJob: CronJob = {
+        ...current,
         lastRunAt: firedAt.toISOString(),
-        nextRunAt: computeNextRunAt(cache[jobIndex], clock.now())?.toISOString(),
+        nextRunAt: computeNextRunAt(current, clock.now())?.toISOString(),
       }
 
-      cache = cache.map((j, i) => i === jobIndex ? updatedJob : j)
+      // NOTICE: oneshot jobs are fire-and-forget; remove from cache after
+      // trigger so they never fire twice and don't linger in jobs.json.
+      if (current.kind === 'oneshot') {
+        cache = cache.filter((_, i) => i !== jobIndex)
+      }
+      else {
+        cache = cache.map((j, i) => i === jobIndex ? firedJob : j)
+      }
 
       // Fire-and-forget persistence — save errors must not block or throw from
       // inside the synchronous timer callback.
@@ -79,7 +95,7 @@ export function createCronScheduler(options: CreateSchedulerOptions): CronSchedu
         console.warn(`[cron-runtime] Failed to persist jobs after trigger: ${errorMessageFrom(err)}`)
       })
 
-      onTrigger({ job: updatedJob, firedAt, scheduledFor })
+      onTrigger({ job: firedJob, firedAt, scheduledFor })
       reschedule()
     }, delay)
   }
@@ -107,7 +123,16 @@ export function createCronScheduler(options: CreateSchedulerOptions): CronSchedu
       // jobs.json with the cleaned list.
       const deduped = new Map<string, CronJob>()
       for (const j of jobs) deduped.set(j.id, j)
-      cache = Array.from(deduped.values()).map(j => (j.enabled ? withNextRunAt(j, clock.now()) : j))
+      // Drop stale oneshot jobs whose fireAt has already passed — otherwise
+      // they'd stay in jobs.json forever with nextRunAt=undefined.
+      const now = clock.now()
+      const surviving = Array.from(deduped.values()).filter((j) => {
+        if (j.kind !== 'oneshot')
+          return true
+        const t = Date.parse(j.fireAt)
+        return Number.isFinite(t) && t > now
+      })
+      cache = surviving.map(j => (j.enabled ? withNextRunAt(j, now) : j))
       await store.save([...cache])
       reschedule()
     },

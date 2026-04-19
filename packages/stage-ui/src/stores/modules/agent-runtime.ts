@@ -41,10 +41,9 @@ export interface AgentRuntimeSkillDefinition {
   sourceDir: string
 }
 
-export interface AgentRuntimeCronJob {
+interface AgentRuntimeCronJobBase {
   id: string
   name: string
-  cron: string
   prompt: string
   sessionId?: string
   enabled: boolean
@@ -53,6 +52,23 @@ export interface AgentRuntimeCronJob {
   lastRunAt?: string
   nextRunAt?: string
 }
+
+export interface AgentRuntimeRecurringCronJob extends AgentRuntimeCronJobBase {
+  kind: 'cron'
+  cron: string
+}
+
+export interface AgentRuntimeOneshotCronJob extends AgentRuntimeCronJobBase {
+  kind: 'oneshot'
+  /** ISO-8601 timestamp of when this job should fire once. */
+  fireAt: string
+}
+
+export type AgentRuntimeCronJob = AgentRuntimeRecurringCronJob | AgentRuntimeOneshotCronJob
+
+export type AgentRuntimeCronJobInput
+  = | Omit<AgentRuntimeRecurringCronJob, 'nextRunAt' | 'lastRunAt'>
+    | Omit<AgentRuntimeOneshotCronJob, 'nextRunAt' | 'lastRunAt'>
 
 export interface AgentRuntimeStatus {
   enabled: boolean
@@ -100,7 +116,7 @@ const _agentRuntimeListCronJobs = defineInvokeEventa<AgentRuntimeCronJob[]>(
 )
 const _agentRuntimeAddCronJob = defineInvokeEventa<
   AgentRuntimeCronJob,
-  Omit<AgentRuntimeCronJob, 'nextRunAt' | 'lastRunAt'>
+  AgentRuntimeCronJobInput
 >(
   'eventa:invoke:electron:agent-runtime:add-cron-job',
 )
@@ -168,6 +184,183 @@ function createMcpToolInvoker(): ToolInvoker {
     cancel: () => {
       // NOTICE: The MCP bridge does not expose per-call cancellation yet.
       // Abort is best-effort via signal checks inside invoke().
+    },
+  }
+}
+
+// Upper bound for oneshot timers — 30 days. Matches product decision so that
+// users cannot accidentally register a multi-year reminder that outlives the
+// app install.
+export const MAX_ONESHOT_DURATION_MS = 30 * 24 * 60 * 60 * 1000
+
+const BUILTIN_TOOL_NAMES = ['schedule_oneshot', 'schedule_cron', 'list_cron_jobs', 'remove_cron_job'] as const
+type BuiltinToolName = (typeof BUILTIN_TOOL_NAMES)[number]
+
+function isBuiltinToolName(name: string): name is BuiltinToolName {
+  return (BUILTIN_TOOL_NAMES as readonly string[]).includes(name)
+}
+
+export const agentRuntimeBuiltinTools: ToolDefinition[] = [
+  {
+    name: 'schedule_oneshot',
+    description: 'Schedule a one-shot reminder that fires once after a specified delay. When it fires, the agent is re-invoked with the given prompt as a fresh user message. Use this for phrases like "tell me in 3 minutes", "remind me after 10 minutes", or "check back in 1 hour".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        durationMs: {
+          type: 'number',
+          description: `Delay from now in milliseconds. Must be between 1000 (1 second) and ${MAX_ONESHOT_DURATION_MS} (30 days).`,
+        },
+        prompt: {
+          type: 'string',
+          description: 'User-visible prompt that will be sent to the agent when the timer fires. Write it as if the user is asking the question at that future moment.',
+        },
+        name: {
+          type: 'string',
+          description: 'Optional short label for the timer shown in the UI.',
+        },
+      },
+      required: ['durationMs', 'prompt'],
+    },
+  },
+  {
+    name: 'schedule_cron',
+    description: 'Schedule a recurring cron job. Use this for phrases like "every day at 9 AM", "every hour", or "every Monday". The prompt is delivered as a fresh user message at each firing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cron: {
+          type: 'string',
+          description: 'Standard 5-field cron expression: "minute hour day-of-month month day-of-week". Example: "0 9 * * *" for every day at 9:00.',
+        },
+        prompt: {
+          type: 'string',
+          description: 'Prompt delivered to the agent at each firing.',
+        },
+        name: {
+          type: 'string',
+          description: 'Human-readable name shown in the UI.',
+        },
+        timezone: {
+          type: 'string',
+          description: 'IANA timezone name (e.g. "Asia/Tokyo"). Defaults to system timezone.',
+        },
+      },
+      required: ['cron', 'prompt', 'name'],
+    },
+  },
+  {
+    name: 'list_cron_jobs',
+    description: 'List all currently scheduled jobs (both recurring cron jobs and oneshot timers).',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'remove_cron_job',
+    description: 'Delete a scheduled job by id.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description: 'Job id to remove (matches `id` returned from `list_cron_jobs`).',
+        },
+      },
+      required: ['id'],
+    },
+  },
+]
+
+interface BuiltinToolDeps {
+  listCronJobs: () => Promise<AgentRuntimeCronJob[] | null>
+  addCronJob: (job: AgentRuntimeCronJobInput) => Promise<AgentRuntimeCronJob | null>
+  removeCronJob: (id: string) => Promise<{ ok: boolean } | null>
+}
+
+export function createBuiltinToolInvoker(deps: BuiltinToolDeps): ToolInvoker {
+  return {
+    invoke: async (_callId, toolName, input) => {
+      const args = (input ?? {}) as Record<string, unknown>
+      switch (toolName as BuiltinToolName) {
+        case 'schedule_oneshot': {
+          const durationMs = Number(args.durationMs)
+          if (!Number.isFinite(durationMs) || durationMs < 1000)
+            throw new Error('schedule_oneshot: durationMs must be >= 1000')
+          if (durationMs > MAX_ONESHOT_DURATION_MS)
+            throw new Error(`schedule_oneshot: durationMs must be <= ${MAX_ONESHOT_DURATION_MS} (30 days)`)
+          const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : ''
+          if (!prompt)
+            throw new Error('schedule_oneshot: prompt required')
+          const name = typeof args.name === 'string' && args.name.trim().length > 0
+            ? args.name.trim()
+            : `Timer +${Math.round(durationMs / 1000)}s`
+          const fireAt = new Date(Date.now() + durationMs).toISOString()
+          const id = `timer-${crypto.randomUUID()}`
+          const created = await deps.addCronJob({
+            id,
+            name,
+            kind: 'oneshot',
+            fireAt,
+            prompt,
+            enabled: true,
+          })
+          if (!created)
+            throw new Error('schedule_oneshot: IPC bridge unavailable')
+          return { ok: true, id: created.id, fireAt: created.kind === 'oneshot' ? created.fireAt : fireAt }
+        }
+        case 'schedule_cron': {
+          const cron = typeof args.cron === 'string' ? args.cron.trim() : ''
+          if (!cron)
+            throw new Error('schedule_cron: cron required')
+          const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : ''
+          if (!prompt)
+            throw new Error('schedule_cron: prompt required')
+          const name = (typeof args.name === 'string' && args.name.trim().length > 0) ? args.name.trim() : `Cron ${cron}`
+          const timezone = typeof args.timezone === 'string' && args.timezone.length > 0 ? args.timezone : undefined
+          const id = `cron-${crypto.randomUUID()}`
+          const created = await deps.addCronJob({
+            id,
+            name,
+            kind: 'cron',
+            cron,
+            prompt,
+            enabled: true,
+            ...(timezone ? { timezone } : {}),
+          })
+          if (!created)
+            throw new Error('schedule_cron: IPC bridge unavailable')
+          return { ok: true, id: created.id, nextRunAt: created.nextRunAt }
+        }
+        case 'list_cron_jobs': {
+          const jobs = (await deps.listCronJobs()) ?? []
+          return { jobs }
+        }
+        case 'remove_cron_job': {
+          const id = typeof args.id === 'string' ? args.id.trim() : ''
+          if (!id)
+            throw new Error('remove_cron_job: id required')
+          const res = await deps.removeCronJob(id)
+          return { ok: !!res?.ok }
+        }
+        default:
+          throw new Error(`Unknown built-in tool: ${toolName}`)
+      }
+    },
+    cancel: () => {
+      // Built-in tools are synchronous IPC round-trips; nothing to cancel.
+    },
+  }
+}
+
+function createCompositeToolInvoker(builtin: ToolInvoker, mcp: ToolInvoker): ToolInvoker {
+  return {
+    invoke: (callId, toolName, input, signal) => {
+      if (isBuiltinToolName(toolName))
+        return builtin.invoke(callId, toolName, input, signal)
+      return mcp.invoke(callId, toolName, input, signal)
+    },
+    cancel: (callId) => {
+      builtin.cancel(callId)
+      mcp.cancel(callId)
     },
   }
 }
@@ -265,7 +458,12 @@ export const useAgentRuntimeStore = defineStore('modules:agent-runtime', () => {
       chatProvider: resolved.provider,
       systemPrompt,
     })
-    const toolInvoker = createMcpToolInvoker()
+    const builtinInvoker = createBuiltinToolInvoker({
+      listCronJobs: () => invokeListCronJobs(),
+      addCronJob: job => invokeAddCronJob(job),
+      removeCronJob: (id: string) => invokeRemoveCronJob({ id }),
+    })
+    const toolInvoker = createCompositeToolInvoker(builtinInvoker, createMcpToolInvoker())
     const approvalGate = createInteractiveApprovalGate({
       emit: (request: ApprovalRequest) => {
         approvalTurnByRequestId.set(request.id, turnId)
@@ -304,11 +502,21 @@ export const useAgentRuntimeStore = defineStore('modules:agent-runtime', () => {
     if (recentTurns.value.length > 50)
       recentTurns.value.length = 50
 
+    // Merge built-in tools with caller-provided extras, letting extras shadow
+    // builtins when they share a name (lets callers override schemas if
+    // needed without having to re-declare every built-in).
+    const extras = extraTools ?? []
+    const extraNames = new Set(extras.map(t => t.name))
+    const mergedTools: ToolDefinition[] = [
+      ...agentRuntimeBuiltinTools.filter(t => !extraNames.has(t.name)),
+      ...extras,
+    ]
+
     try {
       const result = await harness.runAttempt({
         turn: {
           messages,
-          tools: extraTools ?? [],
+          tools: mergedTools,
           systemPrompt,
         },
         onPartialReply: chunk => recordPartial(turnId, chunk),
@@ -426,7 +634,7 @@ export const useAgentRuntimeStore = defineStore('modules:agent-runtime', () => {
   }
 
   async function addCronJob(
-    job: Omit<AgentRuntimeCronJob, 'nextRunAt' | 'lastRunAt'>,
+    job: AgentRuntimeCronJobInput,
   ): Promise<{ ok: boolean, error?: string }> {
     try {
       const created = await invokeAddCronJob(job)

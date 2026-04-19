@@ -72,7 +72,13 @@ const { enabled, skills, cronJobs, activeTurns, configured } = storeToRefs(store
             :class="['flex flex-col gap-0.5']"
           >
             <div>id: <span :class="['font-mono text-xs text-neutral-300']">{{ job.id }}</span></div>
-            <div>cron: <span :class="['font-mono text-xs']">{{ job.cron }}</span></div>
+            <div>kind: <span :class="['font-mono text-xs']">{{ job.kind }}</span></div>
+            <div v-if="job.kind === 'cron'">
+              cron: <span :class="['font-mono text-xs']">{{ job.cron }}</span>
+            </div>
+            <div v-else>
+              fireAt: <span :class="['font-mono text-xs']">{{ job.fireAt }}</span>
+            </div>
             <div>
               enabled:
               <span :class="[job.enabled ? 'text-green-400' : 'text-neutral-500']">{{ job.enabled }}</span>

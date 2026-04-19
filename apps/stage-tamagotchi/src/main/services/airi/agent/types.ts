@@ -1,4 +1,4 @@
-import type { CronJob, CronScheduler } from '@proj-airi/cron-runtime'
+import type { CronJob, CronJobInput, CronScheduler } from '@proj-airi/cron-runtime'
 import type { SkillDefinition } from '@proj-airi/skill-registry'
 
 import type { AgentRuntimeStatus } from '../../../../shared/agent-runtime'
@@ -24,7 +24,7 @@ export interface AgentManager {
   listSkills: () => SkillDefinition[]
   reloadSkills: () => Promise<SkillDefinition[]>
   listCronJobs: () => Promise<CronJob[]>
-  addCronJob: (job: Omit<CronJob, 'nextRunAt' | 'lastRunAt'>) => Promise<CronJob>
+  addCronJob: (job: CronJobInput) => Promise<CronJob>
   removeCronJob: (id: string) => Promise<void>
   toggleCronJob: (id: string, enabled: boolean) => Promise<CronJob>
   registerCronBroadcaster: (broadcaster: CronBroadcaster) => () => void

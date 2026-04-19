@@ -30,6 +30,7 @@ async function handleReloadSkills() {
 const newJob = reactive({
   id: '',
   name: '',
+  kind: 'cron' as const,
   cron: '',
   prompt: '',
   enabled: true,
@@ -152,8 +153,22 @@ async function handleToggleCronJob(id: string, enabled: boolean) {
         >
           <div :class="['flex items-start justify-between gap-2']">
             <div :class="['flex min-w-0 flex-col gap-0.5']">
-              <span :class="['text-sm font-medium text-neutral-800 dark:text-neutral-200']">{{ job.id }}</span>
-              <span :class="['text-xs text-neutral-500 font-mono dark:text-neutral-400']">{{ job.cron }}</span>
+              <div :class="['flex items-center gap-1.5']">
+                <span
+                  :class="[
+                    'rounded px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide',
+                    job.kind === 'oneshot'
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                      : 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
+                  ]"
+                >
+                  {{ job.kind === 'oneshot' ? 'Timer' : 'Cron' }}
+                </span>
+                <span :class="['text-sm font-medium text-neutral-800 dark:text-neutral-200']">{{ job.name || job.id }}</span>
+              </div>
+              <span :class="['text-xs text-neutral-500 font-mono dark:text-neutral-400']">
+                {{ job.kind === 'oneshot' ? `Fires once at ${job.fireAt}` : job.cron }}
+              </span>
               <span :class="['truncate text-xs text-neutral-400 dark:text-neutral-500']">{{ job.prompt }}</span>
               <span v-if="job.nextRunAt" :class="['text-xs text-neutral-400 dark:text-neutral-500']">
                 Next: {{ job.nextRunAt }}

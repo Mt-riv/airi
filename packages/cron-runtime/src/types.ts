@@ -1,7 +1,6 @@
-export interface CronJob {
+interface BaseCronJob {
   id: string
   name: string
-  cron: string
   prompt: string
   sessionId?: string
   enabled: boolean
@@ -10,6 +9,21 @@ export interface CronJob {
   lastRunAt?: string
   nextRunAt?: string
 }
+
+export interface RecurringCronJob extends BaseCronJob {
+  kind: 'cron'
+  cron: string
+}
+
+export interface OneshotCronJob extends BaseCronJob {
+  kind: 'oneshot'
+  /** ISO-8601 timestamp of when this job should fire once. */
+  fireAt: string
+}
+
+export type CronJob = RecurringCronJob | OneshotCronJob
+
+export type CronJobInput = Omit<RecurringCronJob, 'nextRunAt' | 'lastRunAt'> | Omit<OneshotCronJob, 'nextRunAt' | 'lastRunAt'>
 
 export interface CronTriggerEvent {
   job: CronJob
@@ -25,7 +39,7 @@ export interface JobStore {
 export interface CronScheduler {
   start: () => Promise<void>
   stop: () => Promise<void>
-  addJob: (job: Omit<CronJob, 'nextRunAt' | 'lastRunAt'>) => Promise<CronJob>
+  addJob: (job: CronJobInput) => Promise<CronJob>
   removeJob: (id: string) => Promise<void>
   listJobs: () => Promise<CronJob[]>
   toggleJob: (id: string, enabled: boolean) => Promise<CronJob>

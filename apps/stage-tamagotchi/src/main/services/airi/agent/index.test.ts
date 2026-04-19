@@ -30,6 +30,7 @@ describe('createAgentManager × cron-runtime', () => {
     const prior: CronJob = {
       id: 'prior',
       name: 'Prior',
+      kind: 'cron',
       cron: '0 * * * *',
       prompt: 'keep me',
       enabled: true,
@@ -53,6 +54,7 @@ describe('createAgentManager × cron-runtime', () => {
     const added = await manager.addCronJob({
       id: 'new',
       name: 'New',
+      kind: 'cron',
       cron: '*/5 * * * *',
       prompt: 'freshly added',
       enabled: true,
@@ -87,6 +89,7 @@ describe('createAgentManager × cron-runtime', () => {
     await manager.addCronJob({
       id: 'hourly',
       name: 'Hourly',
+      kind: 'cron',
       cron: '0 * * * *',
       prompt: 'fire-me',
       enabled: true,
@@ -100,7 +103,7 @@ describe('createAgentManager × cron-runtime', () => {
 
   it('initialEnabled=false does not start the scheduler (addJob blocked upstream)', async () => {
     const store = createMemoryJobStore([
-      { id: 'ghost', name: 'Ghost', cron: '0 * * * *', prompt: 'nope', enabled: true },
+      { id: 'ghost', name: 'Ghost', kind: 'cron', cron: '0 * * * *', prompt: 'nope', enabled: true },
     ])
     const clock = createFakeClock(0)
     const onTrigger = vi.fn()
@@ -123,7 +126,7 @@ describe('createAgentManager × cron-runtime', () => {
 
   it('setEnabled(true) after a disabled boot loads persisted jobs', async () => {
     const store = createMemoryJobStore([
-      { id: 'preexisting', name: 'Preexisting', cron: '0 * * * *', prompt: 'x', enabled: true },
+      { id: 'preexisting', name: 'Preexisting', kind: 'cron', cron: '0 * * * *', prompt: 'x', enabled: true },
     ])
     const clock = createFakeClock(0)
     const scheduler = createCronScheduler({ store, clock, onTrigger: () => {} })

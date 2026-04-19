@@ -5,6 +5,17 @@ import { dirname } from 'node:path'
 
 import { errorMessageFrom } from '@moeru/std'
 
+// NOTICE: Jobs persisted before the `kind` field was introduced are read as
+// recurring cron entries. This is a one-way data migration (next save() will
+// rewrite them with `kind: 'cron'`), not a runtime guard — the rest of the
+// runtime treats `kind` as required.
+function migrateLegacyJob(raw: Record<string, unknown>): CronJob {
+  if (raw.kind === 'oneshot' || raw.kind === 'cron') {
+    return raw as unknown as CronJob
+  }
+  return { ...(raw as object), kind: 'cron' } as CronJob
+}
+
 export function createJsonJobStore(filepath: string): JobStore {
   async function load(): Promise<CronJob[]> {
     let raw: string
@@ -20,7 +31,8 @@ export function createJsonJobStore(filepath: string): JobStore {
     }
 
     try {
-      return JSON.parse(raw) as CronJob[]
+      const parsed = JSON.parse(raw) as Array<Record<string, unknown>>
+      return parsed.map(migrateLegacyJob)
     }
     catch (err: unknown) {
       const backupPath = `${filepath}.corrupt-${Date.now()}`

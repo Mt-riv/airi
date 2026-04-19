@@ -20,6 +20,7 @@ function makeJob(id: string): CronJob {
   return {
     id,
     name: `Job ${id}`,
+    kind: 'cron',
     cron: '0 * * * *',
     prompt: 'test',
     enabled: true,
@@ -154,6 +155,32 @@ describe('createJsonJobStore', () => {
       const files = await readdir(testDir)
       expect(files).toContain('jobs.json')
       expect(files).not.toContain('jobs.json.tmp')
+    })
+  })
+
+  describe('legacy kind migration', () => {
+    it('normalizes legacy jobs (no kind field) as kind=cron on load', async () => {
+      const filepath = join(testDir, 'jobs.json')
+      // Write a legacy-shape job that predates the `kind` field.
+      await writeFile(
+        filepath,
+        JSON.stringify([
+          {
+            id: 'legacy-1',
+            name: 'Legacy',
+            cron: '0 * * * *',
+            prompt: 'test',
+            enabled: true,
+          },
+        ], null, 2),
+        'utf-8',
+      )
+
+      const store = createJsonJobStore(filepath)
+      const loaded = await store.load()
+      expect(loaded).toHaveLength(1)
+      expect(loaded[0].kind).toBe('cron')
+      expect(loaded[0].id).toBe('legacy-1')
     })
   })
 })

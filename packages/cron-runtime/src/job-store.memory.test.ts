@@ -8,6 +8,7 @@ function makeJob(id: string): CronJob {
   return {
     id,
     name: `Job ${id}`,
+    kind: 'cron',
     cron: '*/5 * * * *',
     prompt: 'hello',
     enabled: true,

@@ -1,4 +1,4 @@
-import type { CronJob, CronTriggerEvent } from './types'
+import type { CronJob, CronJobInput, CronTriggerEvent } from './types'
 
 import { describe, expect, it, vi } from 'vitest'
 
@@ -9,15 +9,28 @@ import { createCronScheduler } from './scheduler'
 // Start virtual time at a known epoch: 2024-01-01 00:00:00 UTC
 const BASE_TIME = new Date('2024-01-01T00:00:00Z').getTime()
 
-function makeJob(overrides: Partial<CronJob> = {}): Omit<CronJob, 'nextRunAt' | 'lastRunAt'> {
+function makeJob(overrides: Partial<CronJob> = {}): CronJobInput {
   return {
     id: 'job-1',
     name: 'Test Job',
+    kind: 'cron',
     cron: '*/1 * * * *',
     prompt: 'test prompt',
     enabled: true,
     ...overrides,
-  }
+  } as CronJobInput
+}
+
+function makeOneshot(overrides: Partial<CronJob> = {}): CronJobInput {
+  return {
+    id: 'timer-1',
+    name: 'Test Timer',
+    kind: 'oneshot',
+    fireAt: new Date(BASE_TIME + 60_000).toISOString(),
+    prompt: 'timer prompt',
+    enabled: true,
+    ...overrides,
+  } as CronJobInput
 }
 
 describe('createCronScheduler', () => {
@@ -262,5 +275,138 @@ describe('createCronScheduler', () => {
     clock.advance(60_000)
 
     expect(onTrigger).toHaveBeenCalledTimes(2)
+  })
+
+  describe('oneshot jobs', () => {
+    it('fires a oneshot job at fireAt and removes it from the cache', async () => {
+      const clock = createFakeClock(BASE_TIME)
+      const store = createMemoryJobStore()
+      const events: CronTriggerEvent[] = []
+
+      const scheduler = createCronScheduler({
+        store,
+        clock,
+        onTrigger: e => events.push(e),
+      })
+
+      await scheduler.start()
+      await scheduler.addJob(makeOneshot())
+      clock.advance(60_000)
+
+      expect(events).toHaveLength(1)
+      expect(events[0].job.id).toBe('timer-1')
+      expect(events[0].firedAt.getTime()).toBe(BASE_TIME + 60_000)
+
+      const remaining = await scheduler.listJobs()
+      expect(remaining).toHaveLength(0)
+    })
+
+    it('does not re-fire a oneshot job after its fireAt elapses', async () => {
+      const clock = createFakeClock(BASE_TIME)
+      const store = createMemoryJobStore()
+      const onTrigger = vi.fn()
+
+      const scheduler = createCronScheduler({ store, clock, onTrigger })
+
+      await scheduler.start()
+      await scheduler.addJob(makeOneshot())
+      clock.advance(60_000)
+      clock.advance(60_000)
+      clock.advance(60_000)
+
+      expect(onTrigger).toHaveBeenCalledTimes(1)
+    })
+
+    it('persists cache omitting fired oneshot after trigger', async () => {
+      const clock = createFakeClock(BASE_TIME)
+      const store = createMemoryJobStore()
+
+      const scheduler = createCronScheduler({ store, clock, onTrigger: () => {} })
+
+      await scheduler.start()
+      await scheduler.addJob(makeOneshot())
+      clock.advance(60_000)
+      // Wait a microtask for the fire-and-forget persistence to flush.
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      const persisted = await store.load()
+      expect(persisted).toHaveLength(0)
+    })
+
+    it('drops oneshot jobs whose fireAt already passed at start()', async () => {
+      const stalePast = new Date(BASE_TIME - 60_000).toISOString()
+      const store = createMemoryJobStore()
+      await store.save([
+        {
+          id: 'stale-1',
+          name: 'Stale',
+          kind: 'oneshot',
+          fireAt: stalePast,
+          prompt: 'test',
+          enabled: true,
+        },
+      ])
+
+      const clock = createFakeClock(BASE_TIME)
+      const onTrigger = vi.fn()
+      const scheduler = createCronScheduler({ store, clock, onTrigger })
+
+      await scheduler.start()
+      clock.advance(60_000 * 60)
+
+      expect(onTrigger).not.toHaveBeenCalled()
+      expect(await scheduler.listJobs()).toHaveLength(0)
+    })
+
+    it('fires a oneshot loaded from the store at fireAt', async () => {
+      const store = createMemoryJobStore()
+      await store.save([
+        {
+          id: 'pre-1',
+          name: 'Pre-existing',
+          kind: 'oneshot',
+          fireAt: new Date(BASE_TIME + 120_000).toISOString(),
+          prompt: 'test',
+          enabled: true,
+        },
+      ])
+
+      const clock = createFakeClock(BASE_TIME)
+      const events: CronTriggerEvent[] = []
+      const scheduler = createCronScheduler({
+        store,
+        clock,
+        onTrigger: e => events.push(e),
+      })
+
+      await scheduler.start()
+      clock.advance(120_000)
+
+      expect(events).toHaveLength(1)
+      expect(events[0].job.id).toBe('pre-1')
+    })
+
+    it('fires nearest job first regardless of kind', async () => {
+      const clock = createFakeClock(BASE_TIME)
+      const store = createMemoryJobStore()
+      const fired: string[] = []
+      const scheduler = createCronScheduler({
+        store,
+        clock,
+        onTrigger: e => fired.push(e.job.id),
+      })
+
+      await scheduler.start()
+      // cron job fires at 60s mark
+      await scheduler.addJob(makeJob({ id: 'cron-minute' }))
+      // oneshot fires at 30s mark — sooner
+      await scheduler.addJob(makeOneshot({ id: 'timer-30s', fireAt: new Date(BASE_TIME + 30_000).toISOString() }))
+
+      clock.advance(30_000)
+      expect(fired).toEqual(['timer-30s'])
+
+      clock.advance(30_000)
+      expect(fired).toContain('cron-minute')
+    })
   })
 })
