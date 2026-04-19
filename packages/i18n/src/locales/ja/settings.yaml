@@ -434,8 +434,19 @@ pages:
       description: 長期記憶固有の設定と管理
       title: 長期記憶
     memory-short-term:
-      description: 短期記憶固有の設定と管理
+      description: .txt / .md ファイルを次の会話の一時的な参照コンテキストとして添付します。
       title: 短期記憶
+      enable:
+        label: ファイルベース短期記憶を有効化
+        description: 有効にすると、削除するまで添付されたドキュメントが毎ターンのプロンプトに挿入されます。
+      clear-after-send:
+        label: 送信後に添付を自動クリア
+        description: 送信が成功するたびに添付をすべて削除します。
+      limits: '制限 — 1ファイル: {perFile} / 合計: {total} / 最大ファイル数: {count}'
+      attached:
+        title: 添付ドキュメント
+        empty: まだドキュメントが添付されていません。チャットに .txt / .md ファイルをドロップしてください。
+        summary: '{count} ファイル · {size} · 約 {tokens} トークン'
     messaging-discord:
       description: Discordでのチャットとボイスチャット
       title: Discord

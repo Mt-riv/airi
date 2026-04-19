@@ -1,5 +1,6 @@
 import type { WebSocketEventInputs } from '@proj-airi/server-sdk'
 import type { ChatHistoryItem, StreamingAssistantMessage } from '@proj-airi/stage-ui/types/chat'
+import type { EphemeralDocAttachment } from '@proj-airi/stage-ui/types/chat-attachment'
 import type { ChatSessionMeta } from '@proj-airi/stage-ui/types/chat-session'
 import type { ChatProvider } from '@xsai-ext/providers/utils'
 
@@ -39,6 +40,7 @@ interface StreamSnapshotPayload {
 interface IngestCommandPayload {
   text: string
   attachments?: AttachmentPayload[]
+  docAttachments?: EphemeralDocAttachment[]
   input?: WebSocketEventInputs
   sessionId?: string
   toolset?: ToolsetId
@@ -215,6 +217,7 @@ export const useChatSyncStore = defineStore('stage-tamagotchi:chat-sync', () => 
       model: modelId,
       chatProvider,
       attachments: payload.attachments,
+      docAttachments: payload.docAttachments,
       input: payload.input,
       tools: resolveTools(payload.toolset),
     }, payload.sessionId)

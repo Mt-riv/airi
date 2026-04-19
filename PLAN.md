@@ -3,7 +3,7 @@
 Claude Code × Airi フォークの実装計画。本ドキュメントは「実装済み機能 / 残存課題 / 次の開発計画」のみを保持する。
 詳細な実績ログ・設計議論は `PLAN.archive-2026-04-18.md` および `git log PLAN.md` を参照。
 
-最終更新: 2026-04-18
+最終更新: 2026-04-19
 
 ---
 
@@ -64,6 +64,15 @@ Claude Code × Airi フォークの実装計画。本ドキュメントは「実
 
 - **P2-B 読み上げプリセット**: New-1〜3 バックログ（速度 / 声質 / 通知音）を設定モジュール化。
 - **P2-C Agent Runtime 承認モーダル自動テスト**: まずは既存 node-vitest + `@testing-library/vue` で承認モーダルコンポーネントの smoke テスト (表示・allow/deny イベント) を追加。Vitest browser / Playwright への本格 E2E は LW-* と同列の拡張タスクとして後続。
+- **P2-X Ephemeral Document Attachments (EM-1〜EM-7)**: Phase 1 完了 (2026-04-19)。
+  - `.txt` / `.md` ファイルをチャット入力にドラッグ&ドロップまたは 📎ピッカーで添付し、送信ごとに `<attached_documents>` XML ブロックとして system 直後の user メッセージに注入する一時記憶機構。renderer 完結で Eventa 契約には触れない。
+  - Store: `packages/stage-ui/src/stores/chat/attachment-store.ts` (in-memory, Pinia, 128 KB/file · 512 KB total · 8 files · UTF-8 fatal 検証 · duplicate/empty 拒否)。
+  - プロンプト合成: `packages/stage-ui/src/stores/chat/attachment-prompt.ts` — XML エスケープ付きで既存 `buildContextPromptMessage` と同列に system 直後へ挿入 (`packages/stage-ui/src/stores/chat.ts`)。
+  - UI: `apps/stage-tamagotchi/src/renderer/components/InteractiveArea.vue` にドロップゾーン overlay、📎 picker ボタン、ドキュメント chip 列、エラー toast (vue-sonner) を追加。設定ページは `packages/stage-pages/src/pages/settings/modules/memory-short-term.vue` で WIP 表示を置換 (§4-4 Valibot 相当の localStorage flag)。
+  - 設定ストア: `packages/stage-ui/src/stores/settings/chat-attachments.ts` — `enabled` (default OFF: §4-1) / `clearAfterSend`。
+  - i18n: `packages/i18n/src/locales/{en,ja}/stage.yaml` と `settings.yaml` に `stage.attachments.*` と `settings.pages.modules.memory-short-term.*` サブキー。他言語は英語フォールバック。
+  - テスト: `attachment-store.test.ts` (10 ケース: add/remove/clear/limits/UTF-8) + `attachment-prompt.test.ts` (4 ケース: null/XML/multi-doc/エスケープ) = 14 件追加、stage-ui は 219/219 green。
+  - 対象外 (次フェーズ): Agent Runtime compose 経路、永続化 (localStorage 保存オプション)、ベクトル検索/RAG、バイナリ (PDF/画像) 対応、ドキュメントのプレビューモーダル。
 
 > P2-A (Phase 7 ドキュメント) / P2-D (cron 電源断シナリオテスト) / P2-E (ESLint 全走査復旧) / P2-F (`parseDataUrl` lint) は 2026-04-18 に完了したため除去。
 

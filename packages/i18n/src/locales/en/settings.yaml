@@ -460,8 +460,19 @@ pages:
       description: Long-term memory specific settings and management
       title: Long-Term Memory
     memory-short-term:
-      description: Short-term memory specific settings and management
+      description: Attach .txt / .md files as ephemeral reference context for the next chat turns.
       title: Short-Term Memory
+      enable:
+        label: Enable file-based short-term memory
+        description: When enabled, attached documents are injected into each chat turn until removed.
+      clear-after-send:
+        label: Clear attachments after sending
+        description: Automatically remove all attached documents after each successful send.
+      limits: 'Limits — per file: {perFile}, total: {total}, max files: {count}'
+      attached:
+        title: Attached documents
+        empty: No documents attached yet. Drop a .txt or .md file into the chat window.
+        summary: '{count} files · {size} · ~{tokens} tokens'
     messaging-discord:
       description: Chat & voice chat over Discord
       title: Discord

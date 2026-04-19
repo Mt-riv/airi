@@ -6,6 +6,20 @@ chat:
       you: You
   reasoning: Reasoning
 message: Say something...
+attachments:
+  pick: Attach text file
+  drop-here: Drop .txt or .md files here
+  remove: Remove attachment
+  clear: Clear attachments
+  summary: '{count} file(s), ~{tokens} tokens'
+  error:
+    too-large: '{name}: file exceeds 128 KB limit'
+    total-cap: '{name}: total attachment size would exceed 512 KB'
+    count-cap: '{name}: attachment count limit reached'
+    binary: '{name}: file is not valid UTF-8 text'
+    unsupported-extension: '{name}: only .txt and .md are supported'
+    duplicate: '{name}: already attached'
+    empty: '{name}: file is empty'
 send-mode:
   title: Send key
   enter: Enter

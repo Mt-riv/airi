@@ -4,14 +4,17 @@ import type { ChatHistoryItem } from '@proj-airi/stage-ui/types/chat'
 import { errorMessageFrom } from '@moeru/std'
 import { ChatHistory } from '@proj-airi/stage-ui/components'
 import { useChatOrchestratorStore } from '@proj-airi/stage-ui/stores/chat'
+import { useChatAttachmentStore } from '@proj-airi/stage-ui/stores/chat/attachment-store'
 import { useChatSessionStore } from '@proj-airi/stage-ui/stores/chat/session-store'
 import { useChatStreamStore } from '@proj-airi/stage-ui/stores/chat/stream-store'
+import { useSettingsChatAttachments } from '@proj-airi/stage-ui/stores/settings/chat-attachments'
 import { BasicTextarea } from '@proj-airi/ui'
 import { useLocalStorage } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { DropdownMenuContent, DropdownMenuItem, DropdownMenuPortal, DropdownMenuRoot, DropdownMenuTrigger } from 'reka-ui'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { toast } from 'vue-sonner'
 
 import { useChatSyncStore } from '../stores/chat-sync'
 
@@ -22,9 +25,13 @@ const chatOrchestrator = useChatOrchestratorStore()
 const chatSession = useChatSessionStore()
 const chatStream = useChatStreamStore()
 const chatSyncStore = useChatSyncStore()
+const chatAttachmentStore = useChatAttachmentStore()
+const attachmentSettings = useSettingsChatAttachments()
 const { messages } = storeToRefs(chatSession)
 const { streamingMessage } = storeToRefs(chatStream)
 const { sending } = storeToRefs(chatOrchestrator)
+const { items: docAttachments, totalTokenEstimate: docTokenEstimate } = storeToRefs(chatAttachmentStore)
+const { enabled: attachmentsEnabled, clearAfterSend } = storeToRefs(attachmentSettings)
 const { t } = useI18n()
 const isComposing = ref(false)
 const DOUBLE_ENTER_INTERVAL_MS = 300
@@ -44,12 +51,15 @@ async function handleSend() {
     return
   }
 
-  if (!messageInput.value.trim() && !attachments.value.length) {
+  if (!messageInput.value.trim() && !attachments.value.length && !docAttachments.value.length) {
     return
   }
 
   const textToSend = messageInput.value
   const attachmentsToSend = attachments.value.map(att => ({ ...att }))
+  const docAttachmentsToSend = attachmentsEnabled.value
+    ? docAttachments.value.map(doc => ({ ...doc }))
+    : []
 
   // optimistic clear
   messageInput.value = ''
@@ -59,10 +69,15 @@ async function handleSend() {
     await chatSyncStore.requestIngest({
       text: textToSend,
       attachments: attachmentsToSend,
+      docAttachments: docAttachmentsToSend.length > 0 ? docAttachmentsToSend : undefined,
       toolset: 'widgets',
     })
 
     attachmentsToSend.forEach(att => URL.revokeObjectURL(att.url))
+
+    if (attachmentsEnabled.value && clearAfterSend.value) {
+      chatAttachmentStore.clear()
+    }
   }
   catch (error) {
     // restore on failure
@@ -121,6 +136,22 @@ function handleMessageInputKeydown(event: KeyboardEvent) {
   }
 }
 
+const TEXT_ATTACHMENT_EXTS = /\.(?:txt|md|markdown)$/i
+
+function isTextAttachmentFile(file: File): boolean {
+  if (TEXT_ATTACHMENT_EXTS.test(file.name))
+    return true
+  return file.type === 'text/plain' || file.type === 'text/markdown' || file.type === 'text/x-markdown'
+}
+
+async function ingestTextAttachment(file: File) {
+  const result = await chatAttachmentStore.addFromFile(file)
+  if (!result.ok) {
+    const key = `stage.attachments.error.${result.reason}`
+    toast.error(t(key, { name: result.name }))
+  }
+}
+
 async function handleFilePaste(files: File[]) {
   for (const file of files) {
     if (file.type.startsWith('image/')) {
@@ -137,6 +168,11 @@ async function handleFilePaste(files: File[]) {
         }
       }
       reader.readAsDataURL(file)
+      continue
+    }
+
+    if (attachmentsEnabled.value && isTextAttachmentFile(file)) {
+      await ingestTextAttachment(file)
     }
   }
 }
@@ -147,6 +183,76 @@ function removeAttachment(index: number) {
     URL.revokeObjectURL(attachment.url)
     attachments.value.splice(index, 1)
   }
+}
+
+function removeDocAttachment(id: string) {
+  chatAttachmentStore.remove(id)
+}
+
+function clearDocAttachments() {
+  chatAttachmentStore.clear()
+}
+
+const fileInputEl = ref<HTMLInputElement | null>(null)
+const isDraggingFiles = ref(false)
+let dragCounter = 0
+
+function openFilePicker() {
+  fileInputEl.value?.click()
+}
+
+async function handleFileInputChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  for (const file of files) {
+    if (isTextAttachmentFile(file))
+      await ingestTextAttachment(file)
+  }
+  input.value = ''
+}
+
+function handleDragEnter(event: DragEvent) {
+  if (!attachmentsEnabled.value)
+    return
+  if (!event.dataTransfer?.types.includes('Files'))
+    return
+  dragCounter += 1
+  isDraggingFiles.value = true
+}
+
+function handleDragOver(event: DragEvent) {
+  if (!attachmentsEnabled.value)
+    return
+  if (!event.dataTransfer?.types.includes('Files'))
+    return
+  event.preventDefault()
+  event.dataTransfer.dropEffect = 'copy'
+}
+
+function handleDragLeave() {
+  dragCounter = Math.max(0, dragCounter - 1)
+  if (dragCounter === 0)
+    isDraggingFiles.value = false
+}
+
+async function handleDrop(event: DragEvent) {
+  if (!attachmentsEnabled.value)
+    return
+  if (!event.dataTransfer?.files?.length)
+    return
+  event.preventDefault()
+  dragCounter = 0
+  isDraggingFiles.value = false
+  const files = Array.from(event.dataTransfer.files)
+  await handleFilePaste(files)
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024)
+    return `${bytes} B`
+  if (bytes < 1024 * 1024)
+    return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
 watch(sendMode, () => {
@@ -161,7 +267,25 @@ async function handleDeleteMessage(index: number) {
 </script>
 
 <template>
-  <div h-full w-full flex="~ col gap-1">
+  <div
+    h-full w-full flex="~ col gap-1"
+    class="relative"
+    @dragenter="handleDragEnter"
+    @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
+  >
+    <div
+      v-if="isDraggingFiles"
+      :class="[
+        'absolute inset-0 z-20 flex items-center justify-center rounded-xl',
+        'pointer-events-none border-2 border-primary-400 border-dashed',
+        'bg-primary-100/70 dark:bg-primary-900/60',
+        'text-sm text-primary-700 dark:text-primary-200 font-medium',
+      ]"
+    >
+      {{ t('stage.attachments.drop-here') }}
+    </div>
     <div w-full flex-1 overflow-hidden>
       <ChatHistory
         :messages="historyMessages"
@@ -188,6 +312,52 @@ async function handleDeleteMessage(index: number) {
           &times;
         </button>
       </div>
+    </div>
+    <div
+      v-if="attachmentsEnabled && docAttachments.length > 0"
+      :class="[
+        'flex flex-wrap items-center gap-2 border-t border-primary-100 px-2 py-1',
+      ]"
+    >
+      <div
+        v-for="doc in docAttachments"
+        :key="doc.id"
+        :class="[
+          'flex items-center gap-1.5 rounded-md px-2 py-1 text-xs',
+          'bg-primary-100/60 dark:bg-primary-900/60',
+          'text-primary-700 dark:text-primary-100',
+        ]"
+        :title="doc.content.slice(0, 200)"
+      >
+        <div class="i-solar:document-text-bold-duotone text-sm" />
+        <span class="max-w-40 truncate">{{ doc.name }}</span>
+        <span class="text-primary-500 opacity-70 dark:text-primary-300">{{ formatBytes(doc.sizeBytes) }}</span>
+        <button
+          :title="t('stage.attachments.remove')"
+          :class="[
+            'h-4 w-4 flex items-center justify-center rounded-full',
+            'hover:bg-red-500/80 hover:text-white',
+          ]"
+          @click="removeDocAttachment(doc.id)"
+        >
+          &times;
+        </button>
+      </div>
+      <span
+        :class="['text-xs text-primary-500 dark:text-primary-300 opacity-70 ml-1']"
+      >
+        {{ t('stage.attachments.summary', { count: docAttachments.length, tokens: docTokenEstimate }) }}
+      </span>
+      <button
+        v-if="docAttachments.length > 1"
+        :title="t('stage.attachments.clear')"
+        :class="[
+          'ml-auto text-xs text-neutral-500 dark:text-neutral-400 hover:text-red-500',
+        ]"
+        @click="clearDocAttachments"
+      >
+        {{ t('stage.attachments.clear') }}
+      </button>
     </div>
     <div :class="['flex items-center justify-end gap-2 py-1']">
       <DropdownMenuRoot>
@@ -233,6 +403,30 @@ async function handleDeleteMessage(index: number) {
           </DropdownMenuContent>
         </DropdownMenuPortal>
       </DropdownMenuRoot>
+
+      <button
+        v-if="attachmentsEnabled"
+        :title="t('stage.attachments.pick')"
+        :class="[
+          'max-h-[10lh] min-h-[1lh]',
+        ]"
+        bg="neutral-100 dark:neutral-800"
+        text="lg neutral-500 dark:neutral-400"
+        hover:text="primary-500 dark:primary-300"
+        flex items-center justify-center rounded-md p-2 outline-none
+        transition-colors transition-transform active:scale-95
+        @click="openFilePicker"
+      >
+        <div class="i-solar:paperclip-bold-duotone" />
+      </button>
+      <input
+        ref="fileInputEl"
+        type="file"
+        accept=".txt,.md,.markdown,text/plain,text/markdown"
+        multiple
+        class="hidden"
+        @change="handleFileInputChange"
+      >
 
       <button
         :class="[

@@ -6,6 +6,20 @@ chat:
       you: あなた
   reasoning: 推論
 message: 何か話しかけてみましょう…
+attachments:
+  pick: テキストファイルを添付
+  drop-here: .txt / .md ファイルをここにドロップ
+  remove: 添付を削除
+  clear: 添付をすべてクリア
+  summary: '{count} ファイル / 約 {tokens} トークン'
+  error:
+    too-large: '{name}: 128 KB を超えています'
+    total-cap: '{name}: 合計サイズが 512 KB を超えます'
+    count-cap: '{name}: 添付ファイル数の上限に達しました'
+    binary: '{name}: UTF-8 テキストとして読み取れません'
+    unsupported-extension: '{name}: .txt / .md のみ対応しています'
+    duplicate: '{name}: 既に添付されています'
+    empty: '{name}: 空のファイルです'
 send-mode:
   title: キーを送信
   enter: Enter

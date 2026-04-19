@@ -3,6 +3,7 @@ import type { ChatProvider } from '@xsai-ext/providers/utils'
 import type { CommonContentPart, Message, ToolMessage } from '@xsai/shared-chat'
 
 import type { ChatAssistantMessage, ChatSlices, ChatStreamEventContext, StreamingAssistantMessage } from '../types/chat'
+import type { EphemeralDocAttachment } from '../types/chat-attachment'
 import type { StreamEvent, StreamOptions } from './llm'
 
 import { createQueue } from '@proj-airi/stream-kit'
@@ -13,6 +14,8 @@ import { ref, toRaw } from 'vue'
 import { useAnalytics } from '../composables'
 import { useLlmmarkerParser } from '../composables/llm-marker-parser'
 import { categorizeResponse, createStreamingCategorizer } from '../composables/response-categoriser'
+import { buildAttachmentPromptMessage } from './chat/attachment-prompt'
+import { useChatAttachmentStore } from './chat/attachment-store'
 import { buildContextPromptMessage } from './chat/context-prompt'
 import { createDatetimeContext, createMinecraftContext } from './chat/context-providers'
 import { useChatContextStore } from './chat/context-store'
@@ -22,12 +25,14 @@ import { useChatStreamStore } from './chat/stream-store'
 import { useContextObservabilityStore } from './devtools/context-observability'
 import { useLLM } from './llm'
 import { useConsciousnessStore } from './modules/consciousness'
+import { useSettingsChatAttachments } from './settings/chat-attachments'
 
 interface SendOptions {
   model: string
   chatProvider: ChatProvider
   providerConfig?: Record<string, unknown>
   attachments?: { type: 'image', data: string, mimeType: string }[]
+  docAttachments?: EphemeralDocAttachment[]
   tools?: StreamOptions['tools']
   input?: WebSocketEventInputs
 }
@@ -69,6 +74,8 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
   const chatSession = useChatSessionStore()
   const chatStream = useChatStreamStore()
   const chatContext = useChatContextStore()
+  const chatAttachments = useChatAttachmentStore()
+  const attachmentSettings = useSettingsChatAttachments()
   const contextObservability = useContextObservabilityStore()
   const { activeSessionId } = storeToRefs(chatSession)
   const { streamingMessage } = storeToRefs(chatStream)
@@ -293,25 +300,63 @@ export const useChatOrchestratorStore = defineStore('chat-orchestrator', () => {
 
       const contextsSnapshot = chatContext.getContextsSnapshot()
       const contextPromptMessage = buildContextPromptMessage(contextsSnapshot)
-      if (contextPromptMessage) {
+      // Authority mode may run in a different window than the one that owns the
+      // attachment store (chat-sync broadcasts ingest commands across
+      // BroadcastChannel instances, each with its own Pinia state). Prefer the
+      // snapshot carried by the payload; fall back to the local store for
+      // same-window sends.
+      const payloadDocAttachments = options.docAttachments ?? []
+      const attachmentSnapshot = payloadDocAttachments.length > 0
+        ? payloadDocAttachments.map(item => ({ ...item }))
+        : (attachmentSettings.enabled
+            ? chatAttachments.items.map(item => ({ ...item }))
+            : [])
+      const attachmentPromptMessage = attachmentSnapshot.length
+        ? buildAttachmentPromptMessage(attachmentSnapshot)
+        : null
+
+      const promptInjections = [attachmentPromptMessage, contextPromptMessage].filter(
+        (msg): msg is NonNullable<typeof msg> => msg != null,
+      )
+
+      if (promptInjections.length > 0) {
         const system = newMessages.slice(0, 1)
         const afterSystem = newMessages.slice(1, newMessages.length)
 
         newMessages = [
           ...system,
-          contextPromptMessage,
+          ...promptInjections,
           ...afterSystem,
         ]
 
-        contextObservability.recordLifecycle({
-          phase: 'prompt-context-built',
-          channel: 'chat',
-          sessionId,
-          details: {
-            contexts: contextsSnapshot,
-            promptMessage: contextPromptMessage,
-          },
-        })
+        if (contextPromptMessage) {
+          contextObservability.recordLifecycle({
+            phase: 'prompt-context-built',
+            channel: 'chat',
+            sessionId,
+            details: {
+              contexts: contextsSnapshot,
+              promptMessage: contextPromptMessage,
+            },
+          })
+        }
+
+        if (attachmentPromptMessage) {
+          contextObservability.recordLifecycle({
+            phase: 'prompt-context-built',
+            channel: 'chat',
+            sessionId,
+            details: {
+              attachments: attachmentSnapshot.map(a => ({
+                id: a.id,
+                name: a.name,
+                sizeBytes: a.sizeBytes,
+                tokenEstimate: a.tokenEstimate,
+              })),
+              promptMessage: attachmentPromptMessage,
+            },
+          })
+        }
       }
 
       streamingMessageContext.composedMessage = newMessages as Message[]
