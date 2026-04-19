@@ -11,8 +11,11 @@ import { errorMessageFrom } from '@moeru/std'
 
 import {
   claudeCodeAttachSession,
+  claudeCodeAttachSessionBySlug,
   claudeCodeCheckBinary,
   claudeCodeDetachSession,
+  claudeCodeListAllProjects,
+  claudeCodeListAllSessions,
   claudeCodeListSessions,
   claudeCodeResolveSlug,
   claudeCodeSendPrompt,
@@ -78,7 +81,10 @@ export function createClaudeCodeService(params: CreateClaudeCodeServiceParams): 
 
   defineInvokeHandlers(context, {
     claudeCodeListSessions,
+    claudeCodeListAllProjects,
+    claudeCodeListAllSessions,
     claudeCodeAttachSession,
+    claudeCodeAttachSessionBySlug,
     claudeCodeDetachSession,
     claudeCodeSendPrompt,
     claudeCodeCheckBinary,
@@ -89,12 +95,27 @@ export function createClaudeCodeService(params: CreateClaudeCodeServiceParams): 
         throw new Error('claudeCodeListSessions: missing payload')
       return manager.listSessions({ projectDir: payload.projectDir })
     },
+    claudeCodeListAllProjects: async () => {
+      return manager.listAllProjects()
+    },
+    claudeCodeListAllSessions: async () => {
+      return manager.listAllSessions()
+    },
     claudeCodeAttachSession: async (payload) => {
       if (!payload)
         throw new Error('claudeCodeAttachSession: missing payload')
       return manager.attachSession({
         sessionId: payload.sessionId,
         projectDir: payload.projectDir,
+      })
+    },
+    claudeCodeAttachSessionBySlug: async (payload) => {
+      if (!payload)
+        throw new Error('claudeCodeAttachSessionBySlug: missing payload')
+      return manager.attachSessionBySlug({
+        sessionId: payload.sessionId,
+        slug: payload.slug,
+        tailOnly: payload.tailOnly,
       })
     },
     claudeCodeDetachSession: async (payload) => {

@@ -168,6 +168,40 @@ describe('createSessionWatcher', () => {
     }
   })
 
+  it('tailOnly skips pre-existing content and emits only appended events', async () => {
+    // Seed the file with history we do NOT want replayed into the speech
+    // pipeline when attaching to a stale session under all-projects mode.
+    await writeFile(
+      filePath,
+      jsonlLine(assistantText('old-1', 'old-one'))
+      + jsonlLine(assistantText('old-2', 'old-two')),
+    )
+
+    const received: string[] = []
+    const watcher = createSessionWatcher({
+      filePath,
+      tailOnly: true,
+      onEvent: (event) => {
+        if (event.kind === 'assistant-text')
+          received.push(event.text)
+      },
+    })
+
+    try {
+      await watcher.start()
+      // Give the watcher a tick to confirm no historical replay is happening.
+      await new Promise(resolve => setTimeout(resolve, 100))
+      expect(received).toEqual([])
+
+      await appendFile(filePath, jsonlLine(assistantText('fresh-1', 'fresh-one')))
+      await waitFor(() => (received.length >= 1 ? received : null))
+      expect(received).toEqual(['fresh-one'])
+    }
+    finally {
+      await watcher.stop()
+    }
+  })
+
   it('calls onError when the file cannot be opened on start', async () => {
     const missing = join(workDir, 'nope.jsonl')
     const onEvent = vi.fn()

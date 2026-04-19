@@ -119,3 +119,39 @@ export type ClaudeCodeResolveSlugResult
 export interface ClaudeCodeResolveSlugInput {
   projectDir: string
 }
+
+/**
+ * One slug directory under `~/.claude/projects/`. `latestSession` is the
+ * JSONL with the most recent mtime, or `null` if the slug directory has no
+ * `.jsonl` files. Used by the "all-projects latest" speech mode in the
+ * settings page to enumerate every Claude Code project on the machine.
+ */
+export interface ClaudeCodeProjectSummary {
+  slug: string
+  latestSession: ClaudeCodeSessionMeta | null
+}
+
+export type ClaudeCodeListAllProjectsInput = Record<string, never>
+
+/**
+ * One slug directory with every session JSONL it contains, sorted by mtime
+ * desc. Used by the manual-select speech mode where the user picks which
+ * sessions to read aloud from a cross-project checkbox list.
+ */
+export interface ClaudeCodeProjectSessionsSummary {
+  slug: string
+  sessions: ClaudeCodeSessionMeta[]
+}
+
+export type ClaudeCodeListAllSessionsInput = Record<string, never>
+
+export interface ClaudeCodeAttachSessionBySlugInput {
+  slug: string
+  sessionId: string
+  /**
+   * When true, the watcher skips the file's existing content and only emits
+   * events appended after attach. Use this when attaching to potentially
+   * stale sessions to avoid dumping old assistant text into TTS.
+   */
+  tailOnly?: boolean
+}

@@ -213,6 +213,9 @@ export default defineConfig({
               '**/settings/models/index.vue',
               '**/settings/system/general.vue',
               '**/settings/modules/mcp.vue',
+              // Claude Code speech settings need electron IPC (session
+              // picker); the tamagotchi renderer ships the full version.
+              '**/settings/modules/claude-code.vue',
             ],
           },
           resolve(import.meta.dirname, 'src', 'renderer', 'pages'),

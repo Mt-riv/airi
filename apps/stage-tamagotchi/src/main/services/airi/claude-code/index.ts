@@ -10,6 +10,8 @@ import type { SessionWatcher } from './session-watcher'
 import type {
   ClaudeCodeCheckBinaryInput,
   ClaudeCodeCheckBinaryResult,
+  ClaudeCodeProjectSessionsSummary,
+  ClaudeCodeProjectSummary,
   ClaudeCodeResolveSlugInput,
   ClaudeCodeResolveSlugResult,
   ClaudeCodeSession,
@@ -56,6 +58,13 @@ export interface ListSessionsInput {
 export interface AttachSessionInput {
   sessionId: string
   projectDir: string
+  tailOnly?: boolean
+}
+
+export interface AttachSessionBySlugInput {
+  sessionId: string
+  slug: string
+  tailOnly?: boolean
 }
 
 export interface DetachSessionInput {
@@ -72,7 +81,10 @@ export type ManagerEventListener = (sessionId: string, event: NormalizedClaudeCo
 
 export interface ClaudeCodeManager {
   listSessions: (input: ListSessionsInput) => Promise<ClaudeCodeSession[]>
+  listAllProjects: () => Promise<ClaudeCodeProjectSummary[]>
+  listAllSessions: () => Promise<ClaudeCodeProjectSessionsSummary[]>
   attachSession: (input: AttachSessionInput) => Promise<ClaudeCodeSessionMeta>
+  attachSessionBySlug: (input: AttachSessionBySlugInput) => Promise<ClaudeCodeSessionMeta>
   detachSession: (input: DetachSessionInput) => Promise<void>
   sendPrompt: (input: SendManagerPromptInput) => Promise<SendPromptResult>
   checkBinary: (input: ClaudeCodeCheckBinaryInput) => Promise<ClaudeCodeCheckBinaryResult>
@@ -162,24 +174,30 @@ export function createClaudeCodeManager(options: ClaudeCodeManagerOptions): Clau
     return sessions
   }
 
-  const attachSession = async ({ sessionId, projectDir }: AttachSessionInput): Promise<ClaudeCodeSessionMeta> => {
+  const attachInternal = async (
+    { sessionId, slug, filePath, cwd, tailOnly }: {
+      sessionId: string
+      slug: string
+      filePath: string
+      cwd?: string
+      tailOnly?: boolean
+    },
+  ): Promise<ClaudeCodeSessionMeta> => {
     const existing = attached.get(sessionId)
     if (existing)
       return existing.meta
-
-    const { slug, slugDir } = await slugDirFor(projectDir)
-    const filePath = join(slugDir, `${sessionId}.jsonl`)
 
     const meta: ClaudeCodeSessionMeta = {
       sessionId,
       slug,
       filePath,
-      cwd: projectDir,
+      cwd,
       eventCount: 0,
     }
 
     const watcher = createSessionWatcher({
       filePath,
+      tailOnly,
       onEvent: (event) => {
         meta.eventCount += 1
         emit(sessionId, event)
@@ -189,6 +207,117 @@ export function createClaudeCodeManager(options: ClaudeCodeManagerOptions): Clau
     attached.set(sessionId, { meta, watcher })
     await watcher.start()
     return meta
+  }
+
+  const attachSession = async ({ sessionId, projectDir, tailOnly }: AttachSessionInput): Promise<ClaudeCodeSessionMeta> => {
+    const existing = attached.get(sessionId)
+    if (existing)
+      return existing.meta
+
+    const { slug, slugDir } = await slugDirFor(projectDir)
+    const filePath = join(slugDir, `${sessionId}.jsonl`)
+    return attachInternal({ sessionId, slug, filePath, cwd: projectDir, tailOnly })
+  }
+
+  const attachSessionBySlug = async ({ sessionId, slug, tailOnly }: AttachSessionBySlugInput): Promise<ClaudeCodeSessionMeta> => {
+    const existing = attached.get(sessionId)
+    if (existing)
+      return existing.meta
+
+    const filePath = join(claudeProjectsRoot, slug, `${sessionId}.jsonl`)
+    return attachInternal({ sessionId, slug, filePath, tailOnly })
+  }
+
+  // Enumerate every `<slug>/<session>.jsonl` beneath `claudeProjectsRoot`
+  // and return them grouped by slug, each slug's sessions sorted by mtime
+  // desc (tie-broken on sessionId). Shared between `listAllProjects` (which
+  // only surfaces the latest per slug) and `listAllSessions` (which returns
+  // all of them). Returns `[]` when the root directory does not exist.
+  const collectSlugSessions = async (): Promise<ClaudeCodeProjectSessionsSummary[]> => {
+    let slugEntries: string[]
+    try {
+      slugEntries = await readdir(claudeProjectsRoot)
+    }
+    catch {
+      return []
+    }
+
+    const summaries = await Promise.all(slugEntries.map(async (slug): Promise<ClaudeCodeProjectSessionsSummary | null> => {
+      const slugDir = join(claudeProjectsRoot, slug)
+      const dirStat = await stat(slugDir).catch(() => null)
+      if (dirStat == null || !dirStat.isDirectory())
+        return null
+
+      const files = await readdir(slugDir).catch((): string[] => [])
+      const jsonlFiles = files.filter(name => name.endsWith('.jsonl'))
+      if (jsonlFiles.length === 0)
+        return { slug, sessions: [] }
+
+      const statted = await Promise.all(jsonlFiles.map(async (name) => {
+        const filePath = join(slugDir, name)
+        const st = await stat(filePath).catch(() => null)
+        return { name, filePath, mtime: st?.mtime ?? null }
+      }))
+
+      statted.sort((a, b) => {
+        const left = a.mtime?.getTime() ?? 0
+        const right = b.mtime?.getTime() ?? 0
+        if (right !== left)
+          return right - left
+        return a.name.localeCompare(b.name)
+      })
+
+      const sessions: ClaudeCodeSessionMeta[] = statted.map(entry => ({
+        sessionId: entry.name.replace(JSONL_EXTENSION_PATTERN, ''),
+        slug,
+        filePath: entry.filePath,
+        lastEventAt: entry.mtime?.toISOString(),
+        eventCount: 0,
+      }))
+
+      return { slug, sessions }
+    }))
+
+    return summaries.filter((entry): entry is ClaudeCodeProjectSessionsSummary => entry != null)
+  }
+
+  const listAllProjects = async (): Promise<ClaudeCodeProjectSummary[]> => {
+    const all = await collectSlugSessions()
+
+    const results: ClaudeCodeProjectSummary[] = all.map(({ slug, sessions }) => ({
+      slug,
+      latestSession: sessions[0] ?? null,
+    }))
+
+    // Sort newest-first so consumers that pick the "head" project get the
+    // most recently active one without extra work.
+    results.sort((a, b) => {
+      const left = a.latestSession?.lastEventAt ?? ''
+      const right = b.latestSession?.lastEventAt ?? ''
+      const byMtime = right.localeCompare(left)
+      if (byMtime !== 0)
+        return byMtime
+      return a.slug.localeCompare(b.slug)
+    })
+
+    return results
+  }
+
+  const listAllSessions = async (): Promise<ClaudeCodeProjectSessionsSummary[]> => {
+    const all = await collectSlugSessions()
+
+    // Sort projects by their newest session's mtime so recently-touched
+    // projects float to the top of the manual-select picker.
+    all.sort((a, b) => {
+      const left = a.sessions[0]?.lastEventAt ?? ''
+      const right = b.sessions[0]?.lastEventAt ?? ''
+      const byMtime = right.localeCompare(left)
+      if (byMtime !== 0)
+        return byMtime
+      return a.slug.localeCompare(b.slug)
+    })
+
+    return all
   }
 
   const detachSession = async ({ sessionId }: DetachSessionInput): Promise<void> => {
@@ -308,7 +437,10 @@ export function createClaudeCodeManager(options: ClaudeCodeManagerOptions): Clau
 
   return {
     listSessions,
+    listAllProjects,
+    listAllSessions,
     attachSession,
+    attachSessionBySlug,
     detachSession,
     sendPrompt,
     checkBinary,
@@ -318,4 +450,4 @@ export function createClaudeCodeManager(options: ClaudeCodeManagerOptions): Clau
   }
 }
 
-export type { ClaudeCodeSession, ClaudeCodeSessionMeta, NormalizedClaudeCodeEvent }
+export type { ClaudeCodeProjectSessionsSummary, ClaudeCodeProjectSummary, ClaudeCodeSession, ClaudeCodeSessionMeta, NormalizedClaudeCodeEvent }

@@ -295,6 +295,130 @@ describe('createClaudeCodeManager', () => {
     }
   })
 
+  it('listAllProjects enumerates every slug directory with its latest session', async () => {
+    // Create a second slug directory alongside the one created in beforeEach
+    // so we can assert multi-project enumeration.
+    const slugB = join(projectsRoot, 'proj-sample-b')
+    await mkdir(slugB, { recursive: true })
+
+    // Slug A: two files, different mtimes — the newer must win.
+    await writeFile(join(slugDir, 'session-old.jsonl'), jsonl({ type: 'user', uuid: 'u', message: { role: 'user', content: 'old' } }))
+    await new Promise(resolve => setTimeout(resolve, 20))
+    await writeFile(join(slugDir, 'session-new.jsonl'), jsonl({ type: 'user', uuid: 'u', message: { role: 'user', content: 'new' } }))
+
+    // Slug B: one file.
+    await writeFile(join(slugB, 'only.jsonl'), jsonl({ type: 'user', uuid: 'u', message: { role: 'user', content: 'solo' } }))
+
+    // Slug C: empty directory — should still appear with null latestSession.
+    const slugC = join(projectsRoot, 'proj-sample-c')
+    await mkdir(slugC, { recursive: true })
+
+    const manager = createClaudeCodeManager({
+      binaryPath: 'claude',
+      claudeProjectsRoot: projectsRoot,
+    })
+
+    const projects = await manager.listAllProjects()
+    const bySlug = new Map(projects.map(p => [p.slug, p]))
+
+    expect(bySlug.get('proj-sample-b')?.latestSession?.sessionId).toBe('only')
+    expect(bySlug.get('proj-sample-c')?.latestSession).toBeNull()
+
+    const slugAEntry = projects.find(p => p.slug !== 'proj-sample-b' && p.slug !== 'proj-sample-c')
+    expect(slugAEntry?.latestSession?.sessionId).toBe('session-new')
+  })
+
+  it('listAllSessions returns every session across every slug, newest-first per slug', async () => {
+    const slugB = join(projectsRoot, 'proj-sample-b')
+    await mkdir(slugB, { recursive: true })
+
+    // Slug A: two files with different mtimes.
+    await writeFile(join(slugDir, 'a-old.jsonl'), jsonl({ type: 'user', uuid: 'u', message: { role: 'user', content: 'old' } }))
+    await new Promise(resolve => setTimeout(resolve, 20))
+    await writeFile(join(slugDir, 'a-new.jsonl'), jsonl({ type: 'user', uuid: 'u', message: { role: 'user', content: 'new' } }))
+
+    // Slug B: one file.
+    await writeFile(join(slugB, 'b-only.jsonl'), jsonl({ type: 'user', uuid: 'u', message: { role: 'user', content: 'solo' } }))
+
+    // Slug C: empty — must surface with sessions: [].
+    const slugC = join(projectsRoot, 'proj-sample-c')
+    await mkdir(slugC, { recursive: true })
+
+    const manager = createClaudeCodeManager({
+      binaryPath: 'claude',
+      claudeProjectsRoot: projectsRoot,
+    })
+
+    const all = await manager.listAllSessions()
+    const bySlug = new Map(all.map(p => [p.slug, p]))
+
+    expect(bySlug.get('proj-sample-b')?.sessions.map(s => s.sessionId)).toEqual(['b-only'])
+    expect(bySlug.get('proj-sample-c')?.sessions).toEqual([])
+
+    const slugAEntry = all.find(p => p.slug !== 'proj-sample-b' && p.slug !== 'proj-sample-c')
+    expect(slugAEntry?.sessions.map(s => s.sessionId)).toEqual(['a-new', 'a-old'])
+  })
+
+  it('listAllSessions returns [] when the projects root does not exist', async () => {
+    const manager = createClaudeCodeManager({
+      binaryPath: 'claude',
+      claudeProjectsRoot: join(projectsRoot, 'definitely-missing'),
+    })
+    await expect(manager.listAllSessions()).resolves.toEqual([])
+  })
+
+  it('listAllProjects returns [] when the projects root does not exist', async () => {
+    const manager = createClaudeCodeManager({
+      binaryPath: 'claude',
+      claudeProjectsRoot: join(projectsRoot, 'definitely-missing'),
+    })
+    await expect(manager.listAllProjects()).resolves.toEqual([])
+  })
+
+  it('attachSessionBySlug tails an existing file without replaying history', async () => {
+    const sessionFile = join(slugDir, 'session-tail.jsonl')
+    await writeFile(
+      sessionFile,
+      jsonl({ type: 'assistant', uuid: 'a-old', message: { role: 'assistant', content: [{ type: 'text', text: 'stale' }] } }),
+    )
+
+    const manager = createClaudeCodeManager({
+      binaryPath: 'claude',
+      claudeProjectsRoot: projectsRoot,
+    })
+
+    const received: Array<{ sessionId: string, event: NormalizedClaudeCodeEvent }> = []
+    const unsubscribe = manager.onEvent((sessionId, event) => received.push({ sessionId, event }))
+
+    try {
+      const { projectSlugFor } = await import('./project-slug')
+      const slug = await projectSlugFor(projectDir)
+      await manager.attachSessionBySlug({ sessionId: 'session-tail', slug, tailOnly: true })
+
+      // Allow the watcher to finish its initial setup; tailOnly must not
+      // replay the pre-existing `stale` line.
+      await new Promise(resolve => setTimeout(resolve, 100))
+      expect(received.filter(r => r.event.kind === 'assistant-text')).toEqual([])
+
+      await appendFile(
+        sessionFile,
+        jsonl({ type: 'assistant', uuid: 'a-fresh', message: { role: 'assistant', content: [{ type: 'text', text: 'fresh' }] } }),
+      )
+      await waitFor(() => (received.some(r => r.event.kind === 'assistant-text') ? received : null))
+
+      const assistant = received.filter(r => r.event.kind === 'assistant-text')
+      expect(assistant).toHaveLength(1)
+      expect(assistant[0]).toMatchObject({
+        sessionId: 'session-tail',
+        event: expect.objectContaining({ text: 'fresh' }),
+      })
+    }
+    finally {
+      unsubscribe()
+      await manager.stopAll()
+    }
+  })
+
   it('resolveSlug returns { ok: false, error } for a missing directory', async () => {
     const manager = createClaudeCodeManager({
       binaryPath: 'claude',

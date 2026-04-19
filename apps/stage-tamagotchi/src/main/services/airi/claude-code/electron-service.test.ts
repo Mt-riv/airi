@@ -1,10 +1,13 @@
 import type {
+  ClaudeCodeProjectSessionsSummary,
+  ClaudeCodeProjectSummary,
   ClaudeCodeSendPromptResult,
   ClaudeCodeSession,
   ClaudeCodeSessionMeta,
   NormalizedClaudeCodeEvent,
 } from '../../../../shared/claude-code'
 import type {
+  AttachSessionBySlugInput,
   AttachSessionInput,
   ClaudeCodeManager,
   DetachSessionInput,
@@ -63,11 +66,19 @@ function createFakeManager(overrides: Partial<ClaudeCodeManager> = {}): FakeMana
   const listeners = new Set<ManagerEventListener>()
 
   const defaultListSessions = vi.fn<(input: ListSessionsInput) => Promise<ClaudeCodeSession[]>>(async () => [])
+  const defaultListAllProjects = vi.fn<() => Promise<ClaudeCodeProjectSummary[]>>(async () => [])
+  const defaultListAllSessions = vi.fn<() => Promise<ClaudeCodeProjectSessionsSummary[]>>(async () => [])
   const defaultAttach = vi.fn<(input: AttachSessionInput) => Promise<ClaudeCodeSessionMeta>>(async input => ({
     sessionId: input.sessionId,
     slug: 'test-slug',
     filePath: `/fake/${input.sessionId}.jsonl`,
     cwd: input.projectDir,
+    eventCount: 0,
+  }))
+  const defaultAttachBySlug = vi.fn<(input: AttachSessionBySlugInput) => Promise<ClaudeCodeSessionMeta>>(async input => ({
+    sessionId: input.sessionId,
+    slug: input.slug,
+    filePath: `/fake/${input.slug}/${input.sessionId}.jsonl`,
     eventCount: 0,
   }))
   const defaultDetach = vi.fn<(input: DetachSessionInput) => Promise<void>>(async () => {})
@@ -83,7 +94,10 @@ function createFakeManager(overrides: Partial<ClaudeCodeManager> = {}): FakeMana
 
   return {
     listSessions: defaultListSessions,
+    listAllProjects: defaultListAllProjects,
+    listAllSessions: defaultListAllSessions,
     attachSession: defaultAttach,
+    attachSessionBySlug: defaultAttachBySlug,
     detachSession: defaultDetach,
     sendPrompt: defaultSendPrompt,
     checkBinary: defaultCheckBinary,

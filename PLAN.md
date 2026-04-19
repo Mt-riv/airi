@@ -69,7 +69,10 @@ Claude Code × Airi フォークの実装計画。本ドキュメントは「実
 
 ### Priority 3: 拡張機能 (P3-A 〜 P3-C)
 
-- **P3-A Claude Code 複数セッション UI**: 現状は単一セッション tail。プロジェクト別のタブ切替を renderer に追加。
+- **P3-A Claude Code 複数セッション UI**: Phase 1 & 2 完了 (2026-04-18)。
+  - Phase 1: 全プロジェクト最新セッション自動追従。main に `listAllProjects` / `attachSessionBySlug` RPC + session-watcher の `tailOnly` オプション。
+  - Phase 2: 個別セッション選択 UI。`listAllSessions` RPC が全 slug の全セッションを返し、設定画面のチェックボックス式ピッカーで発話対象を明示指定。`speechScope` に `manual-select` 追加、`selectedSessions` (slug/sessionId ペア配列) を localStorage 永続化。settings module は `packages/stage-pages` から `apps/stage-tamagotchi/src/renderer/pages/settings/modules/claude-code.vue` へ移動（electron IPC が必要なため、`mcp.vue` 同様の tamagotchi 専用モジュール扱い。stage-pages 側はビルド除外）。
+  - chat history prefix を `[Claude Code/<project-name>]` 形式にして、どのプロジェクトの応答かが一目でわかるようにした。プロジェクト名は `cwd` basename 優先、なければ slug の末尾セグメントで派生。
 - **P3-B Agent Runtime スキル配布**: SKILL.md パッケージをプラグイン経由で配布できるよう `packages/plugin-sdk` のマニフェストに `skills` フィールドを追加（`permissions` と同様に Valibot で schema 定義）。
 - **P3-C Speech Provider のストリーミング最適化**: VOICEVOX / AivisSpeech の合成レイテンシを計測し、文節単位チャンク化を検討。
 

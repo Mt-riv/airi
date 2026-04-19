@@ -4,11 +4,16 @@
 // so Phase 1 modules can keep their `./types` import paths unchanged.
 
 export type {
+  ClaudeCodeAttachSessionBySlugInput,
   ClaudeCodeAttachSessionInput,
   ClaudeCodeCheckBinaryInput,
   ClaudeCodeCheckBinaryResult,
   ClaudeCodeDetachSessionInput,
+  ClaudeCodeListAllProjectsInput,
+  ClaudeCodeListAllSessionsInput,
   ClaudeCodeListSessionsInput,
+  ClaudeCodeProjectSessionsSummary,
+  ClaudeCodeProjectSummary,
   ClaudeCodeResolveSlugInput,
   ClaudeCodeResolveSlugResult,
   ClaudeCodeSendPromptInput,

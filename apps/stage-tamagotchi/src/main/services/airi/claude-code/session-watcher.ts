@@ -12,6 +12,13 @@ export interface SessionWatcherOptions {
   filePath: string
   onEvent: (event: NormalizedClaudeCodeEvent) => void
   onError?: (error: Error) => void
+  /**
+   * When true, skip the initial drain and start the byte cursor at the file's
+   * current EOF. Only events appended after `start()` resolves are emitted.
+   * Used by the "all-projects latest" speech mode so attaching to many stale
+   * sessions does not replay hours of assistant text into the TTS pipeline.
+   */
+  tailOnly?: boolean
 }
 
 export interface SessionWatcher {
@@ -33,7 +40,7 @@ export interface SessionWatcher {
 //         rotated), read from the cursor to the new EOF, split on `\n`, hold
 //         back any trailing fragment until the next change.
 export function createSessionWatcher(options: SessionWatcherOptions): SessionWatcher {
-  const { filePath, onEvent, onError } = options
+  const { filePath, onEvent, onError, tailOnly = false } = options
 
   let cursor = 0
   let pendingFragment = ''
@@ -123,12 +130,34 @@ export function createSessionWatcher(options: SessionWatcherOptions): SessionWat
     }
   }
 
+  const seekToTail = async () => {
+    try {
+      const handle = await open(filePath, 'r')
+      try {
+        const stat = await handle.stat()
+        cursor = stat.size
+      }
+      finally {
+        await handle.close()
+      }
+    }
+    catch (error) {
+      emitError(error)
+    }
+  }
+
   const start = async () => {
     if (stopped)
       return
 
-    // Initial drain: read whatever is already in the file.
-    await drain()
+    if (tailOnly) {
+      // Skip existing content — only emit events appended after start resolves.
+      await seekToTail()
+    }
+    else {
+      // Initial drain: read whatever is already in the file.
+      await drain()
+    }
 
     if (stopped)
       return

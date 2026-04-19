@@ -545,6 +545,26 @@ pages:
         speech-enabled:
           title: Speech readout
           description: Let Airi read aloud Claude Code assistant responses via the TTS pipeline.
+        speech-scope:
+          title: Speech scope
+          description: Choose which Claude Code sessions Airi reads aloud.
+          options:
+            current-project:
+              title: Current project only
+              description: Read the latest session under the configured project directory.
+            all-projects-latest:
+              title: All projects (latest session)
+              description: Auto-attach to the most recent session in every ~/.claude/projects/<slug> directory and follow newly started sessions.
+            manual-select:
+              title: Manual selection
+              description: Read aloud only the specific sessions you pick below. Useful for watching a long-running session in one project without being interrupted by others.
+        manual-select:
+          title: Sessions to read aloud
+          subtitle: '{selected} of {total} sessions selected'
+          refresh: Refresh
+          refreshing: Loading…
+          empty: No Claude Code sessions found. Run `claude` in a project directory, then refresh.
+          no-sessions-in-project: No sessions yet in this project.
         project-dir:
           title: Project directory
           description: Working directory for Claude Code session monitoring.

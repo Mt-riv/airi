@@ -516,6 +516,26 @@ pages:
         speech-enabled:
           title: 音声読み上げ
           description: Airi が Claude Code のアシスタント応答を TTS パイプラインで読み上げます。
+        speech-scope:
+          title: 読み上げ対象
+          description: どの Claude Code セッションを読み上げるかを選びます。
+          options:
+            current-project:
+              title: 現在のプロジェクトのみ
+              description: 下で指定したプロジェクトディレクトリの最新セッションを読み上げます。
+            all-projects-latest:
+              title: 全プロジェクト（最新セッション）
+              description: ~/.claude/projects/<slug> 配下の各プロジェクトの最新セッションに自動 attach し、新しいセッションが始まっても追従します。
+            manual-select:
+              title: 手動で選択
+              description: 下のリストで明示的に選んだセッションだけを読み上げます。特定のプロジェクトの長いセッションを他に邪魔されず読み上げたい時に便利です。
+        manual-select:
+          title: 読み上げ対象セッション
+          subtitle: '{total} 件中 {selected} 件を選択中'
+          refresh: 再読み込み
+          refreshing: 読み込み中…
+          empty: Claude Code のセッションが見つかりませんでした。プロジェクトで `claude` を実行してから再読み込みしてください。
+          no-sessions-in-project: このプロジェクトにはまだセッションがありません。
         project-dir:
           title: プロジェクトディレクトリ
           description: Claude Code セッション監視の対象ディレクトリ。
